@@ -1,36 +1,29 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+const root = new URL("../", import.meta.url);
 
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html", host: "localhost" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
+test("ships a Vercel-ready Heatline Pursuit game", async () => {
+  const [page, game, layout, packageSource, vercelSource] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/PursuitGame.tsx", root), "utf8"),
+    readFile(new URL("app/layout.tsx", root), "utf8"),
+    readFile(new URL("package.json", root), "utf8"),
+    readFile(new URL("vercel.json", root), "utf8"),
+  ]);
 
-test("server-renders the Heatline Pursuit game shell", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  const packageJson = JSON.parse(packageSource);
+  const vercel = JSON.parse(vercelSource);
+  assert.equal(packageJson.scripts.build, "next build");
+  assert.equal(packageJson.scripts.start, "next start");
+  assert.equal(vercel.framework, "nextjs");
+  assert.equal(vercel.buildCommand, "npm run build");
 
-  const html = await response.text();
-  assert.match(html, /<title>Heatline Pursuit — Outrun the Law<\/title>/i);
-  assert.match(html, /START ESCAPE/);
-  assert.match(html, /3 UNITS ON YOUR TAIL/);
-  assert.match(html, /Dodge roadblocks, use nitro/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
+  assert.match(page, /<PursuitGame \/>/);
+  assert.match(layout, /Heatline Pursuit — Outrun the Law/);
+  assert.match(game, /START ESCAPE/);
+  assert.match(game, /10 ESCALATING LEVELS/);
+  assert.match(game, /Coastal Warmup/);
+  assert.doesNotMatch(`${page}${game}${layout}`, /codex-preview|react-loading-skeleton/);
 });

@@ -139,6 +139,19 @@ button {
   clip-path: polygon(3% 0, 97% 0, 100% 100%, 0 100%);
 }
 
+.level-chip {
+  display: block;
+  margin-bottom: 3px;
+  overflow: hidden;
+  color: var(--yellow);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .mission-card strong {
   display: block;
   margin: 2px 0 7px;

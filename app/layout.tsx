@@ -8,7 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https";
   const base = new URL(`${protocol}://${host}`);
   const description =
-    "A fast, mobile-ready low-poly police pursuit. Dodge roadblocks, use nitro, and reach the extraction gate.";
+    "A ten-level, mobile-ready low-poly police pursuit. Master longer, curvier routes, dodge roadblocks, and escape the law.";
 
   return {
     metadataBase: base,
