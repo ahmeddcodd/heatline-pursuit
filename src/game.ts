@@ -1646,6 +1646,18 @@ export function startPursuitGame() {
     let audio: AudioContext | null = null;
     let master: GainNode | null = null;
     let musicBus: GainNode | null = null;
+    let sfxBus: GainNode | null = null;
+    let playerEnginePrimary: OscillatorNode | null = null;
+    let playerEngineHarmonic: OscillatorNode | null = null;
+    let playerEngineFilter: BiquadFilterNode | null = null;
+    let playerEngineGain: GainNode | null = null;
+    let windFilter: BiquadFilterNode | null = null;
+    let windGain: GainNode | null = null;
+    let copEngine: OscillatorNode | null = null;
+    let copEngineGain: GainNode | null = null;
+    let copSiren: OscillatorNode | null = null;
+    let copSirenGain: GainNode | null = null;
+    let copPanner: StereoPannerNode | null = null;
     let musicTimer: ReturnType<typeof setInterval> | null = null;
     let noiseBuffer: AudioBuffer | null = null;
     let nextMusicTime = 0;
@@ -1799,13 +1811,16 @@ export function startPursuitGame() {
       master.connect(compressor).connect(audio.destination);
 
       musicBus = audio.createGain();
-      musicBus.gain.value = 0.72;
+      musicBus.gain.value = 0.64;
+      sfxBus = audio.createGain();
+      sfxBus.gain.value = 0.62;
+      sfxBus.connect(master);
       const delay = audio.createDelay(0.5);
       const feedback = audio.createGain();
       const delayWet = audio.createGain();
       delay.delayTime.value = 0.22;
       feedback.gain.value = 0.24;
-      delayWet.gain.value = 0.16;
+      delayWet.gain.value = 0.12;
       musicBus.connect(master);
       musicBus.connect(delay);
       delay.connect(feedback).connect(delay);
@@ -1820,6 +1835,86 @@ export function startPursuitGame() {
       for (let i = 0; i < noise.length; i++) {
         noise[i] = Math.random() * 2 - 1;
       }
+
+      const engineMix = audio.createGain();
+      const enginePrimaryLevel = audio.createGain();
+      const engineHarmonicLevel = audio.createGain();
+      const engineSaturation = audio.createWaveShaper();
+      const saturationCurve = new Float32Array(256);
+      for (let i = 0; i < saturationCurve.length; i++) {
+        const x = (i / (saturationCurve.length - 1)) * 2 - 1;
+        saturationCurve[i] = Math.tanh(x * 2.15);
+      }
+      engineSaturation.curve = saturationCurve;
+      engineSaturation.oversample = "2x";
+      enginePrimaryLevel.gain.value = 0.38;
+      engineHarmonicLevel.gain.value = 0.115;
+      playerEnginePrimary = audio.createOscillator();
+      playerEngineHarmonic = audio.createOscillator();
+      playerEngineFilter = audio.createBiquadFilter();
+      playerEngineGain = audio.createGain();
+      playerEnginePrimary.type = "sawtooth";
+      playerEngineHarmonic.type = "triangle";
+      playerEnginePrimary.frequency.value = 58;
+      playerEngineHarmonic.frequency.value = 116;
+      playerEngineFilter.type = "bandpass";
+      playerEngineFilter.frequency.value = 260;
+      playerEngineFilter.Q.value = 0.72;
+      playerEngineGain.gain.value = 0;
+      playerEnginePrimary.connect(enginePrimaryLevel).connect(engineMix);
+      playerEngineHarmonic.connect(engineHarmonicLevel).connect(engineMix);
+      engineMix
+        .connect(engineSaturation)
+        .connect(playerEngineFilter)
+        .connect(playerEngineGain)
+        .connect(sfxBus);
+      playerEnginePrimary.start();
+      playerEngineHarmonic.start();
+
+      const windSource = audio.createBufferSource();
+      windFilter = audio.createBiquadFilter();
+      windGain = audio.createGain();
+      windSource.buffer = noiseBuffer;
+      windSource.loop = true;
+      windFilter.type = "bandpass";
+      windFilter.frequency.value = 1450;
+      windFilter.Q.value = 0.55;
+      windGain.gain.value = 0;
+      windSource.connect(windFilter).connect(windGain).connect(sfxBus);
+      windSource.start();
+
+      copPanner = audio.createStereoPanner();
+      copEngine = audio.createOscillator();
+      copEngineGain = audio.createGain();
+      const copEngineFilter = audio.createBiquadFilter();
+      copEngine.type = "sawtooth";
+      copEngine.frequency.value = 64;
+      copEngineFilter.type = "lowpass";
+      copEngineFilter.frequency.value = 260;
+      copEngineFilter.Q.value = 0.85;
+      copEngineGain.gain.value = 0;
+      copEngine
+        .connect(copEngineFilter)
+        .connect(copEngineGain)
+        .connect(copPanner);
+      copEngine.start();
+
+      copSiren = audio.createOscillator();
+      copSirenGain = audio.createGain();
+      const sirenFilter = audio.createBiquadFilter();
+      copSiren.type = "sine";
+      copSiren.frequency.value = 720;
+      sirenFilter.type = "bandpass";
+      sirenFilter.frequency.value = 880;
+      sirenFilter.Q.value = 0.9;
+      copSirenGain.gain.value = 0;
+      copSiren
+        .connect(sirenFilter)
+        .connect(copSirenGain)
+        .connect(copPanner);
+      copPanner.connect(sfxBus);
+      copSiren.start();
+
       nextMusicTime = audio.currentTime + 0.05;
       musicStep = 0;
       scheduleMusic();
@@ -1834,7 +1929,7 @@ export function startPursuitGame() {
       osc.frequency.exponentialRampToValueAtTime(38, audio.currentTime + 0.16);
       gain.gain.setValueAtTime(0.26, audio.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.18);
-      osc.connect(gain).connect(master);
+      osc.connect(gain).connect(sfxBus ?? master);
       osc.start();
       osc.stop(audio.currentTime + 0.2);
     };
@@ -2496,10 +2591,118 @@ export function startPursuitGame() {
         p.mesh.scale.multiplyScalar(Math.max(0.92, 1 - dt * 0.7));
         if (p.life <= 0) p.mesh.visible = false;
       });
-      if (audio && musicBus) {
+      if (
+        audio &&
+        musicBus &&
+        playerEnginePrimary &&
+        playerEngineHarmonic &&
+        playerEngineFilter &&
+        playerEngineGain &&
+        windFilter &&
+        windGain &&
+        copEngine &&
+        copEngineGain &&
+        copSiren &&
+        copSirenGain &&
+        copPanner
+      ) {
+        const speedRatio = THREE.MathUtils.clamp(speed / 48, 0, 1);
+        const automaticThrottle =
+          window.matchMedia("(pointer: coarse)").matches && !input.brake;
+        const throttle = input.gas || automaticThrottle ? 1 : input.brake ? 0.18 : 0.38;
+        const gearLength = 7.6;
+        const gear = Math.min(5, Math.floor(speed / gearLength));
+        const gearProgress =
+          (speed - gear * gearLength) / gearLength;
+        const engineFundamental =
+          55 + gearProgress * 53 + gear * 2.8 + throttle * 7;
+        playerEnginePrimary.frequency.setTargetAtTime(
+          engineFundamental,
+          audio.currentTime,
+          0.045,
+        );
+        playerEngineHarmonic.frequency.setTargetAtTime(
+          engineFundamental * 2.03,
+          audio.currentTime,
+          0.038,
+        );
+        playerEngineFilter.frequency.setTargetAtTime(
+          210 + engineFundamental * 2.7 + throttle * 75,
+          audio.currentTime,
+          0.07,
+        );
+        const playerEngineLevel =
+          gamePhase === "playing"
+            ? 0.017 + speedRatio * 0.027 + throttle * 0.006
+            : gamePhase === "won"
+              ? 0.014 + speedRatio * 0.018
+              : 0.006;
+        playerEngineGain.gain.setTargetAtTime(
+          playerEngineLevel,
+          audio.currentTime,
+          0.075,
+        );
+        windFilter.frequency.setTargetAtTime(
+          1100 + speedRatio * 1250,
+          audio.currentTime,
+          0.12,
+        );
+        windGain.gain.setTargetAtTime(
+          gamePhase === "playing" ? speedRatio * speedRatio * 0.016 : 0,
+          audio.currentTime,
+          0.18,
+        );
+
+        let closestCopDistance = Number.POSITIVE_INFINITY;
+        let closestCopPan = 0;
+        for (let i = 0; i < currentLevel().cops; i++) {
+          const cop = cops[i];
+          const distance = Math.abs(progress - cop.progress);
+          if (distance < closestCopDistance) {
+            closestCopDistance = distance;
+            closestCopPan = THREE.MathUtils.clamp(
+              (cop.lane - lane) / Math.max(5, currentLevel().roadEdge),
+              -0.82,
+              0.82,
+            );
+          }
+        }
+        const copProximity =
+          gamePhase === "playing"
+            ? THREE.MathUtils.clamp(1 - closestCopDistance / 58, 0, 1)
+            : 0;
+        copPanner.pan.setTargetAtTime(
+          closestCopPan,
+          audio.currentTime,
+          0.12,
+        );
+        copEngine.frequency.setTargetAtTime(
+          52 + speed * 2.35 + copProximity * 16,
+          audio.currentTime,
+          0.065,
+        );
+        copEngineGain.gain.setTargetAtTime(
+          copProximity * (0.008 + speedRatio * 0.012),
+          audio.currentTime,
+          0.12,
+        );
+        const sirenHighTone = Math.floor(time * 1.72) % 2 === 1;
+        const sirenFrequency =
+          (sirenHighTone ? 945 : 690) + Math.sin(time * 9.5) * 11;
+        copSiren.frequency.setTargetAtTime(
+          sirenFrequency,
+          audio.currentTime,
+          0.055,
+        );
+        copSirenGain.gain.setTargetAtTime(
+          copProximity * (0.018 + bust * 0.00022),
+          audio.currentTime,
+          0.11,
+        );
+
         const musicLevel =
           gamePhase === "playing"
-            ? 0.7 + Math.min(0.18, bust * 0.0018)
+            ? 0.66 - copProximity * 0.1 - Math.min(0.04, bust * 0.0004)
             : gamePhase === "won"
               ? 0.52
               : 0.34;

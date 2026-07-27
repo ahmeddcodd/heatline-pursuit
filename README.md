@@ -23,6 +23,7 @@ environment-variable requirement.
 - Adaptive police pursuit behavior and bust-lock system
 - Procedural city, road, grass, building, and obstacle materials
 - Original adaptive pursuit soundtrack
+- RPM-responsive player engine, wind, police engine, and spatial siren SFX
 - Instanced scenery optimized for browser gameplay
 
 ## Local development
