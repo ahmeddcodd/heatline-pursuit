@@ -1811,9 +1811,9 @@ export function startPursuitGame() {
       master.connect(compressor).connect(audio.destination);
 
       musicBus = audio.createGain();
-      musicBus.gain.value = 0.64;
+      musicBus.gain.value = 0.72;
       sfxBus = audio.createGain();
-      sfxBus.gain.value = 0.62;
+      sfxBus.gain.value = 0.78;
       sfxBus.connect(master);
       const delay = audio.createDelay(0.5);
       const feedback = audio.createGain();
@@ -1847,8 +1847,8 @@ export function startPursuitGame() {
       }
       engineSaturation.curve = saturationCurve;
       engineSaturation.oversample = "2x";
-      enginePrimaryLevel.gain.value = 0.38;
-      engineHarmonicLevel.gain.value = 0.115;
+      enginePrimaryLevel.gain.value = 0.46;
+      engineHarmonicLevel.gain.value = 0.15;
       playerEnginePrimary = audio.createOscillator();
       playerEngineHarmonic = audio.createOscillator();
       playerEngineFilter = audio.createBiquadFilter();
@@ -2633,10 +2633,10 @@ export function startPursuitGame() {
         );
         const playerEngineLevel =
           gamePhase === "playing"
-            ? 0.017 + speedRatio * 0.027 + throttle * 0.006
+            ? 0.028 + speedRatio * 0.043 + throttle * 0.009
             : gamePhase === "won"
-              ? 0.014 + speedRatio * 0.018
-              : 0.006;
+              ? 0.022 + speedRatio * 0.028
+              : 0.009;
         playerEngineGain.gain.setTargetAtTime(
           playerEngineLevel,
           audio.currentTime,
@@ -2682,7 +2682,7 @@ export function startPursuitGame() {
           0.065,
         );
         copEngineGain.gain.setTargetAtTime(
-          copProximity * (0.008 + speedRatio * 0.012),
+          copProximity * (0.014 + speedRatio * 0.022),
           audio.currentTime,
           0.12,
         );
@@ -2695,17 +2695,17 @@ export function startPursuitGame() {
           0.055,
         );
         copSirenGain.gain.setTargetAtTime(
-          copProximity * (0.018 + bust * 0.00022),
+          copProximity * (0.021 + bust * 0.00024),
           audio.currentTime,
           0.11,
         );
 
         const musicLevel =
           gamePhase === "playing"
-            ? 0.66 - copProximity * 0.1 - Math.min(0.04, bust * 0.0004)
+            ? 0.74 - copProximity * 0.085 - Math.min(0.035, bust * 0.00035)
             : gamePhase === "won"
-              ? 0.52
-              : 0.34;
+              ? 0.58
+              : 0.39;
         musicBus.gain.setTargetAtTime(musicLevel, audio.currentTime, 0.18);
       }
       if (speedRef.current) speedRef.current.textContent = String(Math.round(speed * 6.1));
