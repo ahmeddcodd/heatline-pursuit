@@ -10,6 +10,7 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
     html,
     main,
     game,
+    cloudSave,
     youtubePlayables,
     packageSource,
     vercelSource,
@@ -17,6 +18,7 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
     readFile(new URL("dist/index.html", root), "utf8"),
     readFile(new URL("src/main.ts", root), "utf8"),
     readFile(new URL("src/game.ts", root), "utf8"),
+    readFile(new URL("src/cloud-save.ts", root), "utf8"),
     readFile(new URL("src/youtube-playables.ts", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
     readFile(new URL("vercel.json", root), "utf8"),
@@ -47,8 +49,17 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   );
   assert.doesNotMatch(game, /["'`]\/models\//);
   assert.match(main, /createYouTubePlayablesLifecycle\(\)/);
-  assert.match(main, /startPursuitGame\(youtubePlayables\)/);
+  assert.match(main, /await youtubePlayables\.loadCloudData\(\)/);
+  assert.match(
+    main,
+    /startPursuitGame\(youtubePlayables, cloudSaveData\)/,
+  );
   assert.match(game, /youtubePlayables: YouTubePlayablesLifecycle/);
+  assert.match(cloudSave, /CLOUD_SAVE_VERSION = 1/);
+  assert.match(cloudSave, /parseCloudSave/);
+  assert.match(cloudSave, /serializeCloudSave/);
+  assert.match(youtubePlayables, /\.loadData\(\)/);
+  assert.match(youtubePlayables, /\.saveData\(data\)/);
   assert.match(youtubePlayables, /isAudioEnabled\(\)/);
   assert.match(youtubePlayables, /onAudioEnabledChange/);
   assert.match(youtubePlayables, /onPause/);
@@ -58,6 +69,18 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /cancelAnimationFrame\(raf\)/);
   assert.match(game, /void audio\.suspend\(\)/);
   assert.match(game, /gameShell\.inert = hostPaused/);
+  const runtimeSources = [main, game, cloudSave, youtubePlayables].join("\n");
+  const forbiddenPersistenceApis = [
+    ["local", "Storage"].join(""),
+    ["session", "Storage"].join(""),
+    ["indexed", "DB"].join(""),
+    ["document", "cookie"].join("."),
+    ["Cache", "Storage"].join(""),
+    ["caches", "."].join(""),
+  ];
+  forbiddenPersistenceApis.forEach((apiName) => {
+    assert.doesNotMatch(runtimeSources, new RegExp(apiName, "i"));
+  });
   assert.match(html, /START ESCAPE/);
   assert.match(html, /10 ESCALATING LEVELS/);
   await access(new URL("dist/models/player-car.glb", root));
@@ -67,6 +90,61 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
 test("contains no React, Next.js, or vinext dependency", async () => {
   const packageSource = await readFile(new URL("package.json", root), "utf8");
   assert.doesNotMatch(packageSource, /react|next|vinext|react-server-dom/i);
+});
+
+test("cloud saves are versioned, bounded, and backward-compatible", async () => {
+  const source = await readFile(new URL("src/cloud-save.ts", root), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}#${Date.now()}`;
+  const { parseCloudSave, serializeCloudSave } = await import(moduleUrl);
+
+  assert.deepEqual(parseCloudSave("not-json", 10), {
+    version: 1,
+    completedThrough: -1,
+    resumeLevel: 0,
+    playerMuted: false,
+  });
+  assert.deepEqual(
+    parseCloudSave(
+      JSON.stringify({
+        completedThrough: 50,
+        resumeLevel: 4,
+        playerMuted: true,
+      }),
+      10,
+    ),
+    {
+      version: 1,
+      completedThrough: 9,
+      resumeLevel: 4,
+      playerMuted: true,
+    },
+  );
+  assert.deepEqual(
+    JSON.parse(
+      serializeCloudSave(
+        {
+          completedThrough: 3,
+          resumeLevel: 4,
+          playerMuted: true,
+        },
+        10,
+      ),
+    ),
+    {
+      version: 1,
+      campaign: {
+        completedThrough: 3,
+        resumeLevel: 4,
+      },
+      playerMuted: true,
+    },
+  );
 });
 
 test("YouTube lifecycle gives host pause and audio events priority", async () => {
@@ -82,6 +160,7 @@ test("YouTube lifecycle gives host pause and audio events priority", async () =>
   }).outputText;
   const callbacks = {};
   const readinessCalls = [];
+  const cloudCalls = [];
   let removedListeners = 0;
 
   globalThis.ytgame = {
@@ -89,6 +168,13 @@ test("YouTube lifecycle gives host pause and audio events priority", async () =>
     game: {
       firstFrameReady: () => readinessCalls.push("first-frame"),
       gameReady: () => readinessCalls.push("game-ready"),
+      loadData: async () => {
+        cloudCalls.push("load");
+        return '{"version":1}';
+      },
+      saveData: async (data) => {
+        cloudCalls.push(`save:${data}`);
+      },
     },
     system: {
       isAudioEnabled: () => false,
@@ -115,12 +201,19 @@ test("YouTube lifecycle gives host pause and audio events priority", async () =>
     lifecycle.onStateChange((state) => states.push(state));
 
     assert.equal(lifecycle.getState().audioEnabled, false);
+    await lifecycle.saveCloudData('{"blocked":true}');
     lifecycle.gameReady();
     lifecycle.firstFrameReady();
     lifecycle.firstFrameReady();
+    lifecycle.gameReady();
+    assert.deepEqual(readinessCalls, ["first-frame"]);
+
+    assert.equal(await lifecycle.loadCloudData(), '{"version":1}');
+    await lifecycle.saveCloudData('{"version":1}');
     lifecycle.gameReady();
     lifecycle.gameReady();
     assert.deepEqual(readinessCalls, ["first-frame", "game-ready"]);
+    assert.deepEqual(cloudCalls, ["load", 'save:{"version":1}']);
 
     callbacks.pause();
     callbacks.audio(true);

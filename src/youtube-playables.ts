@@ -11,6 +11,8 @@ export type YouTubePlayablesLifecycle = {
   ) => () => void;
   firstFrameReady: () => void;
   gameReady: () => void;
+  loadCloudData: () => Promise<string | null>;
+  saveCloudData: (data: string) => Promise<void>;
   destroy: () => void;
 };
 
@@ -19,6 +21,8 @@ type YouTubePlayablesApi = {
   game: {
     firstFrameReady: () => void;
     gameReady: () => void;
+    loadData: () => Promise<string>;
+    saveData: (data: string) => Promise<void>;
   };
   system: {
     isAudioEnabled: () => boolean;
@@ -48,6 +52,10 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
   });
   let firstFrameWasReported = false;
   let gameWasReportedReady = false;
+  let cloudLoadSettled = !inPlayablesEnvironment;
+  let cloudLoadSucceeded = !inPlayablesEnvironment;
+  let cloudLoadPromise: Promise<string | null> | null = null;
+  let cloudSaveQueue = Promise.resolve();
 
   const warnYouTube = () => {
     try {
@@ -96,6 +104,70 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
     );
   }
 
+  const loadCloudData = () => {
+    if (!api || !inPlayablesEnvironment) {
+      cloudLoadSucceeded = true;
+      return Promise.resolve(null);
+    }
+    if (!cloudLoadPromise) {
+      try {
+        cloudLoadPromise = api.game
+          .loadData()
+          .then((data) => {
+            cloudLoadSettled = true;
+            cloudLoadSucceeded = true;
+            return data || null;
+          })
+          .catch(() => {
+            cloudLoadSettled = true;
+            cloudLoadSucceeded = false;
+            warnYouTube();
+            return null;
+          });
+      } catch {
+        cloudLoadSettled = true;
+        cloudLoadSucceeded = false;
+        warnYouTube();
+        cloudLoadPromise = Promise.resolve(null);
+      }
+    }
+    return cloudLoadPromise;
+  };
+
+  const isWellFormedUtf16 = (value: string) => {
+    for (let index = 0; index < value.length; index++) {
+      const code = value.charCodeAt(index);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = value.charCodeAt(index + 1);
+        if (next < 0xdc00 || next > 0xdfff) return false;
+        index++;
+      } else if (code >= 0xdc00 && code <= 0xdfff) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const saveCloudData = (data: string) => {
+    if (!api || !inPlayablesEnvironment) return Promise.resolve();
+    if (
+      !cloudLoadSucceeded ||
+      data.length * 2 > 3 * 1024 * 1024 ||
+      !isWellFormedUtf16(data)
+    ) {
+      warnYouTube();
+      return Promise.resolve();
+    }
+
+    cloudSaveQueue = cloudSaveQueue
+      .catch(() => undefined)
+      .then(() => api.game.saveData(data))
+      .catch(() => {
+        warnYouTube();
+      });
+    return cloudSaveQueue;
+  };
+
   return {
     getState: () => state,
     onStateChange: (listener) => {
@@ -116,7 +188,8 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
         !api ||
         !inPlayablesEnvironment ||
         gameWasReportedReady ||
-        !firstFrameWasReported
+        !firstFrameWasReported ||
+        !cloudLoadSettled
       ) {
         return;
       }
@@ -127,6 +200,8 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
         warnYouTube();
       }
     },
+    loadCloudData,
+    saveCloudData,
     destroy: () => {
       removeSdkListeners.forEach((removeListener) => {
         try {

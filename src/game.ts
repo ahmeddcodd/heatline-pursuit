@@ -4,6 +4,7 @@ import type {
   YouTubePlayablesLifecycle,
   YouTubePlayablesState,
 } from "./youtube-playables";
+import { parseCloudSave, serializeCloudSave } from "./cloud-save";
 
 type Phase = "menu" | "playing" | "won" | "busted";
 type Wheel = {
@@ -215,6 +216,7 @@ function requiredElement<T extends HTMLElement>(id: string) {
 
 export function startPursuitGame(
   youtubePlayables: YouTubePlayablesLifecycle,
+  serializedCloudSave: string | null,
 ) {
   const mount = requiredElement<HTMLDivElement>("game-canvas");
   const gameShell = requiredElement<HTMLElement>("game-shell");
@@ -247,6 +249,10 @@ export function startPursuitGame(
   gameShell.inert = hostPaused;
   gameShell.classList.toggle("youtube-paused", hostPaused);
   playButton.disabled = true;
+  const initialCloudSave = parseCloudSave(
+    serializedCloudSave,
+    LEVELS.length,
+  );
   const actions: {
     current: {
     start: () => void;
@@ -305,7 +311,7 @@ export function startPursuitGame(
         : "RETRY ESCAPE";
   };
 
-    let levelIndex = 0;
+    let levelIndex = initialCloudSave.resumeLevel;
     const currentLevel = () => LEVELS[levelIndex];
 
     const scene = new THREE.Scene();
@@ -1692,7 +1698,20 @@ export function startPursuitGame(
     let noiseBuffer: AudioBuffer | null = null;
     let nextMusicTime = 0;
     let musicStep = 0;
-    let muted = false;
+    let muted = initialCloudSave.playerMuted;
+    let completedThrough = initialCloudSave.completedThrough;
+    let resumeLevel = initialCloudSave.resumeLevel;
+    const persistCloudState = () =>
+      youtubePlayables.saveCloudData(
+        serializeCloudSave(
+          {
+            completedThrough,
+            resumeLevel,
+            playerMuted: muted,
+          },
+          LEVELS.length,
+        ),
+      );
 
     const scheduleKick = (when: number, intensity: number) => {
       if (!audio || !musicBus) return;
@@ -2327,22 +2346,25 @@ export function startPursuitGame(
     const beginLevel = (nextLevel: number) => {
       if (hostPaused) return;
       levelIndex = THREE.MathUtils.clamp(nextLevel, 0, LEVELS.length - 1);
+      resumeLevel = levelIndex;
       setDisplayLevel(levelIndex);
       configureTrack();
       reset();
       gamePhase = "playing";
       setPhase("playing");
       setupAudio();
+      void persistCloudState();
     };
     configureTrack();
     actions.current = {
-      start: () => beginLevel(0),
+      start: () => beginLevel(resumeLevel),
       retry: () => beginLevel(levelIndex),
       next: () => beginLevel(Math.min(levelIndex + 1, LEVELS.length - 1)),
       sound: () => {
         if (hostPaused || !hostAudioEnabled) return;
         muted = !muted;
         syncAudioPolicy();
+        void persistCloudState();
       },
     };
     playButton.addEventListener("click", () => actions.current?.start());
@@ -2628,6 +2650,10 @@ export function startPursuitGame(
         );
         if (progress >= currentLevel().length) {
           gamePhase = "won";
+          completedThrough = Math.max(completedThrough, levelIndex);
+          resumeLevel =
+            levelIndex < LEVELS.length - 1 ? levelIndex + 1 : 0;
+          void persistCloudState();
           setPhase("won");
           speed = 18;
           effectPosition.set(
@@ -2849,6 +2875,7 @@ export function startPursuitGame(
     };
     const applyYouTubeState = (state: YouTubePlayablesState) => {
       const wasPaused = hostPaused;
+      if (state.paused && !wasPaused) void persistCloudState();
       hostPaused = state.paused;
       hostAudioEnabled = state.audioEnabled;
       gameShell.inert = hostPaused;
@@ -2905,7 +2932,11 @@ export function startPursuitGame(
       actions.current = null;
     };
     window.addEventListener("beforeunload", cleanup, { once: true });
-    setDisplayLevel(0);
+    setDisplayLevel(levelIndex);
+    const playButtonLabel = playButton.querySelector("span");
+    if (playButtonLabel && resumeLevel > 0) {
+      playButtonLabel.textContent = `CONTINUE LEVEL ${resumeLevel + 1}`;
+    }
     setPhase("menu");
     applyYouTubeState(youtubePlayables.getState());
 }
