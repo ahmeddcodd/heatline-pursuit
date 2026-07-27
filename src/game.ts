@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type {
+  YouTubePlayablesLifecycle,
+  YouTubePlayablesState,
+} from "./youtube-playables";
 
 type Phase = "menu" | "playing" | "won" | "busted";
 type Wheel = {
@@ -209,8 +213,11 @@ function requiredElement<T extends HTMLElement>(id: string) {
   return node as T;
 }
 
-export function startPursuitGame() {
+export function startPursuitGame(
+  youtubePlayables: YouTubePlayablesLifecycle,
+) {
   const mount = requiredElement<HTMLDivElement>("game-canvas");
+  const gameShell = requiredElement<HTMLElement>("game-shell");
   const speedRef = { current: requiredElement<HTMLElement>("speed-value") };
   const distanceRef = {
     current: requiredElement<HTMLElement>("distance-value"),
@@ -233,6 +240,13 @@ export function startPursuitGame() {
   const resultButton = requiredElement<HTMLButtonElement>("result-button");
   const levelChip = requiredElement<HTMLElement>("level-chip");
   const soundButton = requiredElement<HTMLButtonElement>("sound-button");
+  const playButton = requiredElement<HTMLButtonElement>("play-button");
+  const initialYouTubeState = youtubePlayables.getState();
+  let hostPaused = initialYouTubeState.paused;
+  let hostAudioEnabled = initialYouTubeState.audioEnabled;
+  gameShell.inert = hostPaused;
+  gameShell.classList.toggle("youtube-paused", hostPaused);
+  playButton.disabled = true;
   const actions: {
     current: {
     start: () => void;
@@ -1563,38 +1577,54 @@ export function startPursuitGame() {
       });
     }
 
+    const deferredAssetUpdates: Array<() => void> = [];
+    const runWhenHostActive = (update: () => void) => {
+      if (youtubePlayables.getState().paused) {
+        deferredAssetUpdates.push(update);
+      } else {
+        update();
+      }
+    };
     let loaded = 0;
     const assetLoaded = () => {
-      loaded++;
-      if (loaded >= 2 && statusRef.current) statusRef.current.textContent = "READY TO RUN";
+      runWhenHostActive(() => {
+        loaded++;
+        if (loaded >= 2 && statusRef.current) {
+          statusRef.current.textContent = "READY TO RUN";
+        }
+      });
     };
     const loader = new GLTFLoader();
     loader.load(
-      "/models/player-car.glb",
+      "./models/player-car.glb",
       (gltf) => {
-        playerVisual.clear();
-        const car = gltf.scene;
-        car.scale.setScalar(0.009);
-        car.position.y = 0.02;
-        playerVisual.add(car);
-        playerWheels = rigWheels(car);
-        assetLoaded();
+        runWhenHostActive(() => {
+          playerVisual.clear();
+          const car = gltf.scene;
+          car.scale.setScalar(0.009);
+          car.position.y = 0.02;
+          playerVisual.add(car);
+          playerWheels = rigWheels(car);
+          assetLoaded();
+        });
       },
       undefined,
       assetLoaded,
     );
     loader.load(
-      "/models/police-car.glb",
+      "./models/police-car.glb",
       (gltf) => {
-        cops.forEach((cop) => {
-          cop.visual.clear();
-          const car = gltf.scene.clone(true);
-          car.scale.setScalar(1.25);
-          car.position.y = 0.03;
-          cop.visual.add(car);
-          cop.wheels = rigWheels(car);
+        runWhenHostActive(() => {
+          cops.forEach((cop) => {
+            cop.visual.clear();
+            const car = gltf.scene.clone(true);
+            car.scale.setScalar(1.25);
+            car.position.y = 0.03;
+            cop.visual.add(car);
+            cop.wheels = rigWheels(car);
+          });
+          assetLoaded();
         });
-        assetLoaded();
       },
       undefined,
       assetLoaded,
@@ -1742,7 +1772,16 @@ export function startPursuitGame() {
       oscillator.stop(when + 0.11);
     };
     const scheduleMusic = () => {
-      if (!audio || !musicBus || audio.state !== "running") return;
+      if (
+        !audio ||
+        !musicBus ||
+        audio.state !== "running" ||
+        hostPaused ||
+        !hostAudioEnabled ||
+        muted
+      ) {
+        return;
+      }
       const sixteenth = 60 / 136 / 4;
       const bassNotes = [
         73.42, 73.42, 87.31, 73.42,
@@ -1794,14 +1833,64 @@ export function startPursuitGame() {
         musicStep++;
       }
     };
+    const stopMusicScheduler = () => {
+      if (!musicTimer) return;
+      clearInterval(musicTimer);
+      musicTimer = null;
+    };
+    const startMusicScheduler = () => {
+      if (
+        musicTimer ||
+        !audio ||
+        audio.state !== "running" ||
+        hostPaused ||
+        !hostAudioEnabled ||
+        muted
+      ) {
+        return;
+      }
+      nextMusicTime = audio.currentTime + 0.05;
+      scheduleMusic();
+      musicTimer = setInterval(scheduleMusic, 45);
+    };
+    const refreshSoundButton = () => {
+      if (!hostAudioEnabled) {
+        soundButton.textContent = "YOUTUBE MUTED";
+        soundButton.setAttribute("aria-label", "Audio muted by YouTube");
+        soundButton.disabled = true;
+        return;
+      }
+      setSoundOn(!muted);
+      soundButton.disabled = hostPaused;
+    };
+    const syncAudioPolicy = () => {
+      refreshSoundButton();
+      if (!audio || !master) return;
+
+      const shouldOutput = hostAudioEnabled && !hostPaused && !muted;
+      master.gain.cancelScheduledValues(audio.currentTime);
+      master.gain.setValueAtTime(shouldOutput ? 0.16 : 0, audio.currentTime);
+
+      if (!hostAudioEnabled || hostPaused || muted) {
+        stopMusicScheduler();
+        if (audio.state === "running") void audio.suspend();
+        return;
+      }
+
+      void audio.resume().then(() => {
+        if (hostAudioEnabled && !hostPaused && !muted) {
+          startMusicScheduler();
+        }
+      });
+    };
     const setupAudio = () => {
       if (audio) {
-        void audio.resume();
+        syncAudioPolicy();
         return;
       }
       audio = new AudioContext();
       master = audio.createGain();
-      master.gain.value = muted ? 0 : 0.16;
+      master.gain.value = 0;
       const compressor = audio.createDynamicsCompressor();
       compressor.threshold.value = -18;
       compressor.knee.value = 12;
@@ -1915,13 +2004,19 @@ export function startPursuitGame() {
       copPanner.connect(sfxBus);
       copSiren.start();
 
-      nextMusicTime = audio.currentTime + 0.05;
       musicStep = 0;
-      scheduleMusic();
-      musicTimer = setInterval(scheduleMusic, 45);
+      syncAudioPolicy();
     };
     const impactSound = () => {
-      if (!audio || !master || muted) return;
+      if (
+        !audio ||
+        !master ||
+        muted ||
+        hostPaused ||
+        !hostAudioEnabled
+      ) {
+        return;
+      }
       const osc = audio.createOscillator();
       const gain = audio.createGain();
       osc.type = "square";
@@ -2230,6 +2325,7 @@ export function startPursuitGame() {
       });
     };
     const beginLevel = (nextLevel: number) => {
+      if (hostPaused) return;
       levelIndex = THREE.MathUtils.clamp(nextLevel, 0, LEVELS.length - 1);
       setDisplayLevel(levelIndex);
       configureTrack();
@@ -2244,23 +2340,15 @@ export function startPursuitGame() {
       retry: () => beginLevel(levelIndex),
       next: () => beginLevel(Math.min(levelIndex + 1, LEVELS.length - 1)),
       sound: () => {
+        if (hostPaused || !hostAudioEnabled) return;
         muted = !muted;
-        setSoundOn(!muted);
-        if (audio && master) {
-          master.gain.setTargetAtTime(
-            muted ? 0 : 0.16,
-            audio.currentTime,
-            0.03,
-          );
-        }
+        syncAudioPolicy();
       },
     };
-    requiredElement<HTMLButtonElement>("play-button").addEventListener(
-      "click",
-      () => actions.current?.start(),
-    );
+    playButton.addEventListener("click", () => actions.current?.start());
     soundButton.addEventListener("click", () => actions.current?.sound());
     resultButton.addEventListener("click", () => {
+      if (hostPaused) return;
       if (gamePhase === "won" && levelIndex < LEVELS.length - 1) {
         actions.current?.next();
       } else if (gamePhase === "busted") {
@@ -2271,6 +2359,7 @@ export function startPursuitGame() {
     });
 
     const onKey = (event: KeyboardEvent, down: boolean) => {
+      if (hostPaused) return;
       if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(event.code)) {
         event.preventDefault();
       }
@@ -2293,6 +2382,7 @@ export function startPursuitGame() {
     const bindHold = (id: string, field: "gas" | "brake" | "boost") => {
       const el = document.getElementById(id);
       const down = (e: PointerEvent) => {
+        if (hostPaused) return;
         e.preventDefault();
         input[field] = true;
         el?.setPointerCapture(e.pointerId);
@@ -2314,17 +2404,19 @@ export function startPursuitGame() {
     const unbindBoost = bindHold("boost-control", "boost");
     const steerPad = document.getElementById("steer-control");
     const updateSteer = (e: PointerEvent) => {
-      if (!steerPad) return;
+      if (!steerPad || hostPaused) return;
       const rect = steerPad.getBoundingClientRect();
       input.touch = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width - 0.5) * 2, -1, 1);
       if (knobRef.current) knobRef.current.style.transform = `translateX(${input.touch * 38}px)`;
     };
     const steerDown = (e: PointerEvent) => {
+      if (hostPaused) return;
       e.preventDefault();
       steerPad?.setPointerCapture(e.pointerId);
       updateSteer(e);
     };
     const steerMove = (e: PointerEvent) => {
+      if (hostPaused) return;
       if (steerPad?.hasPointerCapture(e.pointerId)) updateSteer(e);
     };
     const steerUp = () => {
@@ -2337,6 +2429,7 @@ export function startPursuitGame() {
     steerPad?.addEventListener("pointercancel", steerUp);
 
     const resize = () => {
+      if (hostPaused) return;
       if (!mount.clientWidth || !mount.clientHeight) return;
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
@@ -2352,7 +2445,13 @@ export function startPursuitGame() {
     const smoothedLook = new THREE.Vector3(roadCenter(0, levelIndex), 1.05, -12);
     const effectPosition = new THREE.Vector3();
     let raf = 0;
+    let firstFrameReported = false;
+    let gameReadyReported = false;
     const animate = () => {
+      if (hostPaused) {
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.035);
       time += dt;
@@ -2724,8 +2823,60 @@ export function startPursuitGame() {
         )}%`;
       }
       renderer.render(scene, camera);
+      if (!firstFrameReported) {
+        youtubePlayables.firstFrameReady();
+        firstFrameReported = true;
+      }
+      if (!gameReadyReported && loaded >= 2) {
+        playButton.disabled = false;
+        youtubePlayables.gameReady();
+        gameReadyReported = true;
+      }
     };
-    animate();
+    const startAnimationLoop = () => {
+      if (hostPaused || raf !== 0) return;
+      clock.getDelta();
+      animate();
+    };
+    const clearInput = () => {
+      input.left = false;
+      input.right = false;
+      input.gas = false;
+      input.brake = false;
+      input.boost = false;
+      input.touch = 0;
+      knobRef.current.style.transform = "translateX(0)";
+    };
+    const applyYouTubeState = (state: YouTubePlayablesState) => {
+      const wasPaused = hostPaused;
+      hostPaused = state.paused;
+      hostAudioEnabled = state.audioEnabled;
+      gameShell.inert = hostPaused;
+      gameShell.classList.toggle("youtube-paused", hostPaused);
+      playButton.disabled = hostPaused || loaded < 2;
+
+      if (hostPaused) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        clearInput();
+        syncAudioPolicy();
+        return;
+      }
+
+      if (wasPaused) {
+        const pendingUpdates = deferredAssetUpdates.splice(
+          0,
+          deferredAssetUpdates.length,
+        );
+        pendingUpdates.forEach((update) => update());
+        resize();
+        clock.getDelta();
+      }
+      syncAudioPolicy();
+      startAnimationLoop();
+    };
+    const removeYouTubeStateListener =
+      youtubePlayables.onStateChange(applyYouTubeState);
 
     const cleanup = () => {
       cancelAnimationFrame(raf);
@@ -2739,7 +2890,9 @@ export function startPursuitGame() {
       steerPad?.removeEventListener("pointermove", steerMove);
       steerPad?.removeEventListener("pointerup", steerUp);
       steerPad?.removeEventListener("pointercancel", steerUp);
-      if (musicTimer) clearInterval(musicTimer);
+      stopMusicScheduler();
+      removeYouTubeStateListener();
+      youtubePlayables.destroy();
       void audio?.close();
       renderer.dispose();
       renderer.domElement.remove();
@@ -2753,6 +2906,6 @@ export function startPursuitGame() {
     };
     window.addEventListener("beforeunload", cleanup, { once: true });
     setDisplayLevel(0);
-    setSoundOn(true);
     setPhase("menu");
+    applyYouTubeState(youtubePlayables.getState());
 }

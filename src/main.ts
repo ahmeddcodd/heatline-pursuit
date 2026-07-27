@@ -1,4 +1,6 @@
 import { startPursuitGame } from "./game";
 import "./globals.css";
+import { createYouTubePlayablesLifecycle } from "./youtube-playables";
 
-startPursuitGame();
+const youtubePlayables = createYouTubePlayablesLifecycle();
+startPursuitGame(youtubePlayables);

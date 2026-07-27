@@ -44,6 +44,10 @@ button {
   background: radial-gradient(circle at 50% 35%, #88d8f0, transparent 55%), #55abc8;
 }
 
+.game-shell.youtube-paused {
+  pointer-events: none;
+}
+
 .game-canvas canvas {
   display: block;
   width: 100%;
@@ -366,9 +370,15 @@ button {
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
 
-.play-button:hover {
+.play-button:enabled:hover {
   box-shadow: 4px 4px 0 var(--orange);
   transform: skewX(-5deg) translate(3px, 3px);
+}
+
+.play-button:disabled {
+  cursor: wait;
+  filter: saturate(0.45);
+  opacity: 0.62;
 }
 
 .play-button b {
