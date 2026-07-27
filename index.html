@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A ten-level, mobile-ready low-poly police pursuit. Master longer, curvier routes, dodge roadblocks, and escape the law."
+    />
+    <meta name="theme-color" content="#101923" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Heatline Pursuit — Outrun the Law" />
+    <meta
+      property="og:description"
+      content="A ten-level, mobile-ready low-poly police pursuit. Master longer, curvier routes, dodge roadblocks, and escape the law."
+    />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Heatline Pursuit — Outrun the Law" />
+    <meta
+      name="twitter:description"
+      content="A ten-level, mobile-ready low-poly police pursuit. Master longer, curvier routes, dodge roadblocks, and escape the law."
+    />
+    <meta name="twitter:image" content="/og.png" />
+    <link rel="icon" href="/favicon.svg" />
+    <title>Heatline Pursuit — Outrun the Law</title>
+  </head>
+  <body>
+    <main class="game-shell">
+      <div
+        class="game-canvas"
+        id="game-canvas"
+        aria-label="3D pursuit game viewport"
+      ></div>
+
+      <div class="game-hud" id="game-hud">
+        <div class="top-bar">
+          <section class="speed-card" aria-label="Current speed">
+            <span class="hud-kicker">SPEED</span>
+            <strong id="speed-value">0</strong>
+            <small>KM/H</small>
+          </section>
+          <section class="mission-card">
+            <span class="level-chip" id="level-chip">
+              LEVEL 1 / 10 · COASTAL WARMUP
+            </span>
+            <span class="hud-kicker">DISTANCE TO EXTRACTION</span>
+            <strong id="distance-value">700m</strong>
+            <div class="distance-track"><span id="route-fill"></span></div>
+          </section>
+          <button
+            class="sound-button"
+            id="sound-button"
+            type="button"
+            aria-label="Mute game audio"
+          >
+            SOUND ON
+          </button>
+        </div>
+        <div class="danger-meter">
+          <div class="danger-label">
+            <span>BUST LOCK</span>
+            <span>LEAVE THE COP ZONE</span>
+          </div>
+          <div class="danger-track"><div id="bust-fill"></div></div>
+        </div>
+        <div class="mobile-controls">
+          <div
+            class="steer-control"
+            id="steer-control"
+            role="slider"
+            aria-label="Steering"
+            aria-valuemin="-1"
+            aria-valuemax="1"
+            aria-valuenow="0"
+          >
+            <span class="steer-arrow">‹</span>
+            <div class="steer-knob" id="steer-knob"><span></span></div>
+            <span class="steer-arrow">›</span>
+          </div>
+          <div class="pedal-stack">
+            <button class="nitro-button" id="boost-control" type="button">
+              <span>NITRO</span><i><b id="nitro-fill"></b></i>
+            </button>
+            <div class="pedal-row">
+              <button class="pedal brake" id="brake-control" type="button">
+                BRAKE
+              </button>
+              <button class="pedal gas" id="gas-control" type="button">
+                GAS
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="desktop-hint">
+          <span>WASD / ARROWS</span><b>STEER</b><span>SHIFT</span><b>NITRO</b
+          ><span>SPACE</span><b>BRAKE</b>
+        </div>
+      </div>
+
+      <section class="start-screen" id="start-screen">
+        <div class="brand-lockup">
+          <span class="eyebrow">ZYNTH ARCADE PRESENTS</span>
+          <h1>HEATLINE<em>PURSUIT</em></h1>
+          <p>
+            Master ten escalating routes. Lose the cops. Hit every extraction
+            gate.
+          </p>
+          <div class="mission-pills">
+            <span>10 ESCALATING LEVELS</span>
+            <span>LONGER · CURVIER · TOUGHER</span>
+          </div>
+          <button class="play-button" id="play-button" type="button">
+            <span>START ESCAPE</span><b>›</b>
+          </button>
+          <div class="asset-status">
+            <i></i><span id="status-value">LOADING VEHICLES…</span>
+          </div>
+        </div>
+        <div class="start-tip">
+          <span>DRIVER TIP</span>
+          <p>
+            Feather the steering at top speed. Nitro is strongest on
+            straightaways.
+          </p>
+        </div>
+      </section>
+
+      <section class="result-screen" id="result-screen" hidden>
+        <div class="result-card">
+          <span class="result-stamp" id="result-stamp"></span>
+          <h2 id="result-title"></h2>
+          <p id="result-copy"></p>
+          <button id="result-button" type="button"></button>
+          <small>PRESS ENTER TO CONTINUE</small>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

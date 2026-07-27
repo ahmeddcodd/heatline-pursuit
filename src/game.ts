@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
@@ -206,28 +203,94 @@ function billboard(text: string, color = "#ffe34e") {
   );
 }
 
-export default function PursuitGame() {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const speedRef = useRef<HTMLSpanElement>(null);
-  const distanceRef = useRef<HTMLSpanElement>(null);
-  const bustRef = useRef<HTMLDivElement>(null);
-  const nitroRef = useRef<HTMLDivElement>(null);
-  const routeRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLSpanElement>(null);
-  const knobRef = useRef<HTMLDivElement>(null);
-  const actions = useRef<{
+function requiredElement<T extends HTMLElement>(id: string) {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`Missing required game element: #${id}`);
+  return node as T;
+}
+
+export function startPursuitGame() {
+  const mount = requiredElement<HTMLDivElement>("game-canvas");
+  const speedRef = { current: requiredElement<HTMLElement>("speed-value") };
+  const distanceRef = {
+    current: requiredElement<HTMLElement>("distance-value"),
+  };
+  const bustRef = { current: requiredElement<HTMLDivElement>("bust-fill") };
+  const nitroRef = { current: requiredElement<HTMLDivElement>("nitro-fill") };
+  const routeRef = { current: requiredElement<HTMLSpanElement>("route-fill") };
+  const statusRef = {
+    current: requiredElement<HTMLSpanElement>("status-value"),
+  };
+  const knobRef = {
+    current: requiredElement<HTMLDivElement>("steer-knob"),
+  };
+  const gameHud = requiredElement<HTMLDivElement>("game-hud");
+  const startScreen = requiredElement<HTMLElement>("start-screen");
+  const resultScreen = requiredElement<HTMLElement>("result-screen");
+  const resultStamp = requiredElement<HTMLElement>("result-stamp");
+  const resultTitle = requiredElement<HTMLElement>("result-title");
+  const resultCopy = requiredElement<HTMLElement>("result-copy");
+  const resultButton = requiredElement<HTMLButtonElement>("result-button");
+  const levelChip = requiredElement<HTMLElement>("level-chip");
+  const soundButton = requiredElement<HTMLButtonElement>("sound-button");
+  const actions: {
+    current: {
     start: () => void;
     retry: () => void;
     next: () => void;
     sound: () => void;
-  } | null>(null);
-  const [phase, setPhase] = useState<Phase>("menu");
-  const [soundOn, setSoundOn] = useState(true);
-  const [displayLevel, setDisplayLevel] = useState(0);
+    } | null;
+  } = { current: null };
+  let displayLevel = 0;
 
-  useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
+  const setDisplayLevel = (level: number) => {
+    displayLevel = level;
+    levelChip.textContent =
+      `LEVEL ${level + 1} / ${LEVELS.length} · ${LEVELS[level].name}`;
+    distanceRef.current.textContent = `${LEVELS[level].length}m`;
+  };
+  const setSoundOn = (enabled: boolean) => {
+    soundButton.textContent = enabled ? "SOUND ON" : "MUTED";
+    soundButton.setAttribute(
+      "aria-label",
+      enabled ? "Mute game audio" : "Turn on game audio",
+    );
+  };
+  const setPhase = (phase: Phase) => {
+    gameHud.classList.toggle("is-active", phase === "playing");
+    startScreen.hidden = phase !== "menu";
+    resultScreen.hidden = phase === "menu" || phase === "playing";
+    resultScreen.className = `result-screen ${phase}`;
+    if (phase !== "won" && phase !== "busted") return;
+
+    const campaignComplete =
+      phase === "won" && displayLevel === LEVELS.length - 1;
+    resultStamp.textContent =
+      phase === "won"
+        ? campaignComplete
+          ? "CAMPAIGN COMPLETE"
+          : `LEVEL ${displayLevel + 1} CLEAR`
+        : `LEVEL ${displayLevel + 1} · PURSUIT ENDED`;
+    resultTitle.textContent =
+      phase === "won"
+        ? campaignComplete
+          ? "HEATLINE MASTERED!"
+          : "CLEAN GETAWAY!"
+        : "BUSTED";
+    resultCopy.textContent =
+      phase === "won"
+        ? campaignComplete
+          ? "You conquered all ten routes and left every unit behind."
+          : `Next: ${LEVELS[displayLevel + 1].name} — a longer, tighter pursuit.`
+        : "The units boxed you in. Keep moving and use the whole road.";
+    resultButton.textContent =
+      phase === "won"
+        ? campaignComplete
+          ? "RESTART CAMPAIGN"
+          : `START LEVEL ${displayLevel + 2}`
+        : "RETRY ESCAPE";
+  };
+
     let levelIndex = 0;
     const currentLevel = () => LEVELS[levelIndex];
 
@@ -2097,6 +2160,20 @@ export default function PursuitGame() {
         }
       },
     };
+    requiredElement<HTMLButtonElement>("play-button").addEventListener(
+      "click",
+      () => actions.current?.start(),
+    );
+    soundButton.addEventListener("click", () => actions.current?.sound());
+    resultButton.addEventListener("click", () => {
+      if (gamePhase === "won" && levelIndex < LEVELS.length - 1) {
+        actions.current?.next();
+      } else if (gamePhase === "busted") {
+        actions.current?.retry();
+      } else {
+        actions.current?.start();
+      }
+    });
 
     const onKey = (event: KeyboardEvent, down: boolean) => {
       if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(event.code)) {
@@ -2447,7 +2524,7 @@ export default function PursuitGame() {
     };
     animate();
 
-    return () => {
+    const cleanup = () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
@@ -2471,137 +2548,8 @@ export default function PursuitGame() {
       });
       actions.current = null;
     };
-  }, []);
-
-  return (
-    <main className="game-shell">
-      <div className="game-canvas" ref={mountRef} aria-label="3D pursuit game viewport" />
-      <div className={`game-hud ${phase === "playing" ? "is-active" : ""}`}>
-        <div className="top-bar">
-          <section className="speed-card" aria-label="Current speed">
-            <span className="hud-kicker">SPEED</span>
-            <strong ref={speedRef}>0</strong>
-            <small>KM/H</small>
-          </section>
-          <section className="mission-card">
-            <span className="level-chip">
-              LEVEL {displayLevel + 1} / {LEVELS.length} · {LEVELS[displayLevel].name}
-            </span>
-            <span className="hud-kicker">DISTANCE TO EXTRACTION</span>
-            <strong ref={distanceRef}>{LEVELS[displayLevel].length}m</strong>
-            <div className="distance-track"><span ref={routeRef} /></div>
-          </section>
-          <button
-            className="sound-button"
-            type="button"
-            aria-label={soundOn ? "Mute game audio" : "Turn on game audio"}
-            onClick={() => actions.current?.sound()}
-          >
-            {soundOn ? "SOUND ON" : "MUTED"}
-          </button>
-        </div>
-        <div className="danger-meter">
-          <div className="danger-label">
-            <span>BUST LOCK</span>
-            <span>LEAVE THE COP ZONE</span>
-          </div>
-          <div className="danger-track"><div ref={bustRef} /></div>
-        </div>
-        <div className="mobile-controls">
-          <div
-            className="steer-control"
-            id="steer-control"
-            role="slider"
-            aria-label="Steering"
-            aria-valuemin={-1}
-            aria-valuemax={1}
-            aria-valuenow={0}
-          >
-            <span className="steer-arrow">‹</span>
-            <div className="steer-knob" ref={knobRef}><span /></div>
-            <span className="steer-arrow">›</span>
-          </div>
-          <div className="pedal-stack">
-            <button className="nitro-button" id="boost-control" type="button">
-              <span>NITRO</span><i><b ref={nitroRef} /></i>
-            </button>
-            <div className="pedal-row">
-              <button className="pedal brake" id="brake-control" type="button">BRAKE</button>
-              <button className="pedal gas" id="gas-control" type="button">GAS</button>
-            </div>
-          </div>
-        </div>
-        <div className="desktop-hint">
-          <span>WASD / ARROWS</span><b>STEER</b><span>SHIFT</span><b>NITRO</b><span>SPACE</span><b>BRAKE</b>
-        </div>
-      </div>
-
-      {phase === "menu" && (
-        <section className="start-screen">
-          <div className="brand-lockup">
-            <span className="eyebrow">ZYNTH ARCADE PRESENTS</span>
-            <h1>HEATLINE<em>PURSUIT</em></h1>
-            <p>Master ten escalating routes. Lose the cops. Hit every extraction gate.</p>
-            <div className="mission-pills">
-              <span>10 ESCALATING LEVELS</span>
-              <span>LONGER · CURVIER · TOUGHER</span>
-            </div>
-            <button className="play-button" type="button" onClick={() => actions.current?.start()}>
-              <span>START ESCAPE</span><b>›</b>
-            </button>
-            <div className="asset-status"><i /><span ref={statusRef}>LOADING VEHICLES…</span></div>
-          </div>
-          <div className="start-tip">
-            <span>DRIVER TIP</span>
-            <p>Feather the steering at top speed. Nitro is strongest on straightaways.</p>
-          </div>
-        </section>
-      )}
-
-      {(phase === "won" || phase === "busted") && (
-        <section className={`result-screen ${phase}`}>
-          <div className="result-card">
-            <span className="result-stamp">
-              {phase === "won"
-                ? displayLevel === LEVELS.length - 1
-                  ? "CAMPAIGN COMPLETE"
-                  : `LEVEL ${displayLevel + 1} CLEAR`
-                : `LEVEL ${displayLevel + 1} · PURSUIT ENDED`}
-            </span>
-            <h2>
-              {phase === "won"
-                ? displayLevel === LEVELS.length - 1
-                  ? "HEATLINE MASTERED!"
-                  : "CLEAN GETAWAY!"
-                : "BUSTED"}
-            </h2>
-            <p>
-              {phase === "won"
-                ? displayLevel === LEVELS.length - 1
-                  ? "You conquered all ten routes and left every unit behind."
-                  : `Next: ${LEVELS[displayLevel + 1].name} — a longer, tighter pursuit.`
-                : "The units boxed you in. Keep moving and use the whole road."}
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                phase === "won"
-                  ? displayLevel === LEVELS.length - 1
-                    ? actions.current?.start()
-                    : actions.current?.next()
-                  : actions.current?.retry()
-              }
-            >
-              {phase === "won"
-                ? displayLevel === LEVELS.length - 1
-                  ? "RESTART CAMPAIGN"
-                  : `START LEVEL ${displayLevel + 2}`
-                : "RETRY ESCAPE"}
-            </button>
-            <small>PRESS ENTER TO CONTINUE</small>
-          </div>
-        </section>
-      )}
-    </main>
-  );
+    window.addEventListener("beforeunload", cleanup, { once: true });
+    setDisplayLevel(0);
+    setSoundOn(true);
+    setPhase("menu");
 }

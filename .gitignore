@@ -13,11 +13,6 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/.vinext/
-/out/
-
 # misc
 .DS_Store
 *.pem
@@ -31,16 +26,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
-# vercel
+# deployment
 .vercel
 
 # typescript
-next-env.d.ts
 tsconfig.tsbuildinfo
 /dist/
-/.wrangler/
-/outputs/
-/work/
 
 # local source copies (optimized deployment copies live in public/models)
 /CAR Model by Ignition Labs - 5zUWP5UsLg-.glb

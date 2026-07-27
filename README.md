@@ -1,8 +1,19 @@
 # Heatline Pursuit
 
-Heatline Pursuit is a mobile-ready Three.js police pursuit game built with
-Next.js. Escape increasingly difficult police chases across ten low-poly city
-tracks using keyboard or touch steering.
+Heatline Pursuit is a mobile-ready Three.js police pursuit game built entirely
+with Vite and TypeScript. Escape increasingly difficult police chases across
+ten low-poly city tracks using keyboard or touch steering.
+
+## Stack
+
+- Vite 8
+- TypeScript 5
+- Three.js
+- Native HTML and CSS
+- Web Audio API
+
+There is no React, Next.js, vinext, server runtime, database, or
+environment-variable requirement.
 
 ## Features
 
@@ -12,7 +23,7 @@ tracks using keyboard or touch steering.
 - Adaptive police pursuit behavior and bust-lock system
 - Procedural city, road, grass, building, and obstacle materials
 - Original adaptive pursuit soundtrack
-- Optimized instanced scenery for browser gameplay
+- Instanced scenery optimized for browser gameplay
 
 ## Local development
 
@@ -23,7 +34,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open the local URL printed by Vite.
 
 ## Validation
 
@@ -34,7 +45,6 @@ npm test
 
 ## Deploy to Vercel
 
-Import `ahmeddcodd/heatline-pursuit` in Vercel. The included `vercel.json`
-selects the Next.js framework, installs with `npm ci`, and builds with
-`npm run build`. The game requires no environment variables or external
-services.
+Import `ahmeddcodd/heatline-pursuit` in Vercel. The included configuration uses
+the Vite framework preset, installs with `npm ci`, builds with `npm run build`,
+and serves the static `dist` output.
