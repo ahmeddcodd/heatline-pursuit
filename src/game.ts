@@ -1712,6 +1712,8 @@ export function startPursuitGame(
           LEVELS.length,
         ),
       );
+    const campaignScore = () => completedThrough + 1;
+    void youtubePlayables.sendScore(campaignScore());
 
     const scheduleKick = (when: number, intensity: number) => {
       if (!audio || !musicBus) return;
@@ -2653,7 +2655,9 @@ export function startPursuitGame(
           completedThrough = Math.max(completedThrough, levelIndex);
           resumeLevel =
             levelIndex < LEVELS.length - 1 ? levelIndex + 1 : 0;
-          void persistCloudState();
+          void persistCloudState().then(() =>
+            youtubePlayables.sendScore(campaignScore()),
+          );
           setPhase("won");
           speed = 18;
           effectPosition.set(

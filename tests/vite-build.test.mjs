@@ -60,6 +60,9 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(cloudSave, /serializeCloudSave/);
   assert.match(youtubePlayables, /\.loadData\(\)/);
   assert.match(youtubePlayables, /\.saveData\(data\)/);
+  assert.match(youtubePlayables, /Number\.isSafeInteger\(value\)/);
+  assert.match(youtubePlayables, /sendScore\(\{ value \}\)/);
+  assert.match(game, /campaignScore = \(\) => completedThrough \+ 1/);
   assert.match(youtubePlayables, /isAudioEnabled\(\)/);
   assert.match(youtubePlayables, /onAudioEnabledChange/);
   assert.match(youtubePlayables, /onPause/);
@@ -161,10 +164,16 @@ test("YouTube lifecycle gives host pause and audio events priority", async () =>
   const callbacks = {};
   const readinessCalls = [];
   const cloudCalls = [];
+  const scoreCalls = [];
   let removedListeners = 0;
 
   globalThis.ytgame = {
     IN_PLAYABLES_ENV: true,
+    engagement: {
+      sendScore: async ({ value }) => {
+        scoreCalls.push(value);
+      },
+    },
     game: {
       firstFrameReady: () => readinessCalls.push("first-frame"),
       gameReady: () => readinessCalls.push("game-ready"),
@@ -210,10 +219,15 @@ test("YouTube lifecycle gives host pause and audio events priority", async () =>
 
     assert.equal(await lifecycle.loadCloudData(), '{"version":1}');
     await lifecycle.saveCloudData('{"version":1}');
+    await lifecycle.sendScore(1.5);
+    await lifecycle.sendScore(0);
+    await lifecycle.sendScore(0);
+    await lifecycle.sendScore(3);
     lifecycle.gameReady();
     lifecycle.gameReady();
     assert.deepEqual(readinessCalls, ["first-frame", "game-ready"]);
     assert.deepEqual(cloudCalls, ["load", 'save:{"version":1}']);
+    assert.deepEqual(scoreCalls, [0, 3]);
 
     callbacks.pause();
     callbacks.audio(true);

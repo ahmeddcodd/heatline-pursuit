@@ -13,11 +13,15 @@ export type YouTubePlayablesLifecycle = {
   gameReady: () => void;
   loadCloudData: () => Promise<string | null>;
   saveCloudData: (data: string) => Promise<void>;
+  sendScore: (value: number) => Promise<void>;
   destroy: () => void;
 };
 
 type YouTubePlayablesApi = {
   IN_PLAYABLES_ENV: boolean;
+  engagement: {
+    sendScore: (score: { value: number }) => Promise<void>;
+  };
   game: {
     firstFrameReady: () => void;
     gameReady: () => void;
@@ -56,6 +60,8 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
   let cloudLoadSucceeded = !inPlayablesEnvironment;
   let cloudLoadPromise: Promise<string | null> | null = null;
   let cloudSaveQueue = Promise.resolve();
+  let scoreQueue = Promise.resolve();
+  let highestQueuedScore = -1;
 
   const warnYouTube = () => {
     try {
@@ -168,6 +174,29 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
     return cloudSaveQueue;
   };
 
+  const sendScore = (value: number) => {
+    if (!api || !inPlayablesEnvironment) return Promise.resolve();
+    if (
+      !cloudLoadSucceeded ||
+      !Number.isSafeInteger(value) ||
+      value < 0 ||
+      value <= highestQueuedScore
+    ) {
+      if (!Number.isSafeInteger(value) || value < 0) warnYouTube();
+      return Promise.resolve();
+    }
+
+    highestQueuedScore = value;
+    scoreQueue = scoreQueue
+      .catch(() => undefined)
+      .then(() => api.engagement.sendScore({ value }))
+      .catch(() => {
+        if (highestQueuedScore === value) highestQueuedScore = -1;
+        warnYouTube();
+      });
+    return scoreQueue;
+  };
+
   return {
     getState: () => state,
     onStateChange: (listener) => {
@@ -202,6 +231,7 @@ export function createYouTubePlayablesLifecycle(): YouTubePlayablesLifecycle {
     },
     loadCloudData,
     saveCloudData,
+    sendScore,
     destroy: () => {
       removeSdkListeners.forEach((removeListener) => {
         try {
