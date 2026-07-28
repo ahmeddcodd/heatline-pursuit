@@ -98,6 +98,16 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /hiddenObjects: THREE\.Object3D\[\]/);
   assert.match(game, /sceneReady && firstFrameReported/);
   assert.match(game, /hostPaused \|\| !sceneReady/);
+  assert.match(game, /renderer\.shadowMap\.enabled = false/);
+  assert.match(game, /makeUnlitMaterial/);
+  assert.match(game, /makeObjectUnlit\(world\)/);
+  assert.match(game, /makeObjectUnlit\(car\)/);
+  assert.match(game, /embeddedLights\.forEach/);
+  assert.doesNotMatch(
+    game,
+    /new THREE\.(?:Ambient|Hemisphere|Directional|Point|Spot|RectArea)Light/,
+  );
+  assert.doesNotMatch(game, /castShadow = true|receiveShadow = true/);
   assert.match(game, /const movementHeading/);
   assert.match(game, /const corneringPush/);
   assert.match(game, /scheduleChordStab/);

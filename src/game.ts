@@ -205,8 +205,8 @@ function rigWheels(model: THREE.Object3D) {
   model.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
     if (mesh.name.toLowerCase().includes("wheel")) wheelMeshes.push(mesh);
   });
 
@@ -391,27 +391,68 @@ export function startPursuitGame(
     renderer.setPixelRatio(
       Math.min(window.devicePixelRatio, mobileRendering ? 1.25 : 1.6),
     );
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = false;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     mount.appendChild(renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0xc9efff, 0x8a5c45, 2.2);
-    const sun = new THREE.DirectionalLight(0xfff1cf, 3.15);
-    sun.position.set(-35, 55, 20);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(
-      mobileRendering ? 512 : 1024,
-      mobileRendering ? 512 : 1024,
-    );
-    sun.shadow.camera.left = -38;
-    sun.shadow.camera.right = 38;
-    sun.shadow.camera.top = 40;
-    sun.shadow.camera.bottom = -22;
-    sun.shadow.camera.far = 120;
-    scene.add(hemi, sun, sun.target);
+    const unlitMaterialCache = new WeakMap<THREE.Material, THREE.Material>();
+    const makeUnlitMaterial = (material: THREE.Material) => {
+      if (material instanceof THREE.MeshBasicMaterial) return material;
+      const cached = unlitMaterialCache.get(material);
+      if (cached) return cached;
+      if (
+        !(material instanceof THREE.MeshStandardMaterial) &&
+        !(material instanceof THREE.MeshPhongMaterial) &&
+        !(material instanceof THREE.MeshLambertMaterial)
+      ) {
+        return material;
+      }
+      const source = material as THREE.MeshStandardMaterial;
+      const unlit = new THREE.MeshBasicMaterial({
+        color: source.color?.clone() ?? new THREE.Color(0xffffff),
+        map: source.map ?? null,
+        alphaMap: source.alphaMap ?? null,
+        alphaTest: source.alphaTest,
+        transparent: source.transparent,
+        opacity: source.opacity,
+        side: source.side,
+        vertexColors: source.vertexColors,
+        depthTest: source.depthTest,
+        depthWrite: source.depthWrite,
+        colorWrite: source.colorWrite,
+        fog: source.fog,
+        wireframe: source.wireframe,
+      });
+      unlit.name = source.name ? `${source.name}_Unlit` : "UnlitGameMaterial";
+      unlit.blending = source.blending;
+      unlit.polygonOffset = source.polygonOffset;
+      unlit.polygonOffsetFactor = source.polygonOffsetFactor;
+      unlit.polygonOffsetUnits = source.polygonOffsetUnits;
+      unlit.toneMapped = source.toneMapped;
+      unlit.visible = source.visible;
+      unlitMaterialCache.set(material, unlit);
+      material.dispose();
+      return unlit;
+    };
+    const makeObjectUnlit = (root: THREE.Object3D) => {
+      const embeddedLights: THREE.Light[] = [];
+      root.traverse((object) => {
+        if (object instanceof THREE.Light) {
+          embeddedLights.push(object);
+          return;
+        }
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        mesh.material = Array.isArray(mesh.material)
+          ? mesh.material.map(makeUnlitMaterial)
+          : makeUnlitMaterial(mesh.material);
+      });
+      embeddedLights.forEach((light) => light.removeFromParent());
+    };
     const world = new THREE.Group();
     scene.add(world);
 
@@ -428,7 +469,7 @@ export function startPursuitGame(
     );
     island.rotation.x = -Math.PI / 2;
     island.position.set(0, -0.5, -850);
-    island.receiveShadow = true;
+    island.receiveShadow = false;
     world.add(island);
 
     const asphaltCanvas = document.createElement("canvas");
@@ -736,12 +777,12 @@ export function startPursuitGame(
       const shoulder = new THREE.Mesh(new THREE.BoxGeometry(34, 0.2, 8.28), shoulderMat);
       shoulder.position.set(x, -0.28, -p);
       shoulder.rotation.y = angle;
-      shoulder.receiveShadow = true;
+      shoulder.receiveShadow = false;
       world.add(shoulder);
       const road = new THREE.Mesh(new THREE.BoxGeometry(28, 0.24, 8.1), roadMat);
       road.position.set(x, -0.13, -p);
       road.rotation.y = angle;
-      road.receiveShadow = true;
+      road.receiveShadow = false;
       world.add(road);
       if (Math.round(p / 8) % 2 === 0) {
         for (const side of [-1, 1]) {
@@ -751,7 +792,7 @@ export function startPursuitGame(
           );
           rail.position.set(side * 13.45, 0.16, 0);
           rail.rotation.x = Math.PI / 2;
-          rail.castShadow = true;
+          rail.castShadow = false;
           road.add(rail);
         }
       }
@@ -770,7 +811,7 @@ export function startPursuitGame(
     ribbonMaterial.polygonOffsetFactor = -1;
     ribbonMaterial.polygonOffsetUnits = -1;
     const roadRibbon = new THREE.Mesh(new THREE.BufferGeometry(), ribbonMaterial);
-    roadRibbon.receiveShadow = true;
+    roadRibbon.receiveShadow = false;
     roadRibbon.renderOrder = 1;
     world.add(roadRibbon);
     const grassFieldMaterial = new THREE.MeshStandardMaterial({
@@ -787,7 +828,7 @@ export function startPursuitGame(
       new THREE.Mesh(new THREE.BufferGeometry(), grassFieldMaterial),
     ];
     grassFields.forEach((field) => {
-      field.receiveShadow = true;
+      field.receiveShadow = false;
       world.add(field);
     });
     const rebuildRoadRibbon = () => {
@@ -953,8 +994,8 @@ export function startPursuitGame(
         bodyMaterial,
       );
       body.position.y = h / 2;
-      body.castShadow = true;
-      body.receiveShadow = true;
+      body.castShadow = false;
+      body.receiveShadow = false;
       building.add(body);
 
       const plinth = new THREE.Mesh(
@@ -972,7 +1013,7 @@ export function startPursuitGame(
         trimMaterial,
       );
       roofCap.position.y = h + 0.14;
-      roofCap.castShadow = true;
+      roofCap.castShadow = false;
       building.add(roofCap);
 
       if (i % 3 === 0) {
@@ -981,7 +1022,7 @@ export function startPursuitGame(
           bodyMaterial,
         );
         upper.position.set(0, h + 0.86, 0);
-        upper.castShadow = true;
+        upper.castShadow = false;
         const roof = new THREE.Mesh(
           new THREE.ConeGeometry(Math.min(width, depth) * 0.36, 1.55, 4),
           new THREE.MeshStandardMaterial({
@@ -991,7 +1032,7 @@ export function startPursuitGame(
         );
         roof.position.y = h + 2.35;
         roof.rotation.y = Math.PI / 4;
-        roof.castShadow = true;
+        roof.castShadow = false;
         building.add(upper, roof);
       } else {
         const utility = new THREE.Mesh(
@@ -1057,7 +1098,7 @@ export function startPursuitGame(
       }
       frames.instanceMatrix.needsUpdate = true;
       glass.instanceMatrix.needsUpdate = true;
-      frames.castShadow = true;
+      frames.castShadow = false;
       glass.castShadow = false;
       building.add(frames, glass);
 
@@ -1167,9 +1208,9 @@ export function startPursuitGame(
       });
     }
     backgroundTowers.instanceColor!.needsUpdate = true;
-    backgroundTowers.castShadow = true;
-    backgroundTowers.receiveShadow = true;
-    backgroundRoofs.castShadow = true;
+    backgroundTowers.castShadow = false;
+    backgroundTowers.receiveShadow = false;
+    backgroundRoofs.castShadow = false;
     world.add(
       backgroundTowers,
       backgroundRoofs,
@@ -1201,7 +1242,7 @@ export function startPursuitGame(
       );
     }
     grassPatches.instanceColor!.needsUpdate = true;
-    grassPatches.receiveShadow = true;
+    grassPatches.receiveShadow = false;
     world.add(grassPatches);
 
     const GRASS_COUNT = 620;
@@ -1227,7 +1268,7 @@ export function startPursuitGame(
       }),
       GRASS_COUNT,
     );
-    grass.receiveShadow = true;
+    grass.receiveShadow = false;
     world.add(grass);
 
     const TREE_COUNT = 92;
@@ -1241,8 +1282,8 @@ export function startPursuitGame(
       new THREE.MeshStandardMaterial({ color: 0x3f8b5c, roughness: 0.95 }),
       TREE_COUNT,
     );
-    treeTrunks.castShadow = true;
-    treeCrowns.castShadow = true;
+    treeTrunks.castShadow = false;
+    treeCrowns.castShadow = false;
     const crownColors = [0x3f8b5c, 0x4f9b58, 0x2f7860, 0x669f4c];
     for (let i = 0; i < TREE_COUNT; i++) {
       treeCrowns.setColorAt(i, new THREE.Color(crownColors[i % crownColors.length]));
@@ -1326,7 +1367,7 @@ export function startPursuitGame(
       arch.add(left, right, beam, beaconA, beaconB);
       arch.traverse((o) => {
         const mesh = o as THREE.Mesh;
-        if (mesh.isMesh) mesh.castShadow = true;
+        if (mesh.isMesh) mesh.castShadow = false;
       });
       arch.position.set(
         roadCenter(progressOnTrack, levelIndex),
@@ -1349,7 +1390,7 @@ export function startPursuitGame(
     for (const x of [-12, 12]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.8, 7, 0.8), postMat);
       post.position.set(x, 3.5, 0);
-      post.castShadow = true;
+      post.castShadow = false;
       finish.add(post);
     }
     const top = new THREE.Mesh(new THREE.BoxGeometry(24.8, 1.1, 0.85), postMat);
@@ -1603,7 +1644,7 @@ export function startPursuitGame(
       }
       root.traverse((o) => {
         const mesh = o as THREE.Mesh;
-        if (mesh.isMesh) mesh.castShadow = true;
+        if (mesh.isMesh) mesh.castShadow = false;
       });
       setTrackPosition(root.position, progress, lane, 0, levelIndex);
       root.rotation.y = roadAngle(progress, levelIndex);
@@ -1712,6 +1753,7 @@ export function startPursuitGame(
         ...lights,
       });
     }
+    makeObjectUnlit(world);
 
     const deferredAssetUpdates: Array<() => void> = [];
     const runWhenHostActive = (update: () => void) => {
@@ -1830,6 +1872,7 @@ export function startPursuitGame(
           car.position.y = 0.02;
           playerVisual.add(car);
           playerWheels = rigWheels(car);
+          makeObjectUnlit(car);
           playerAssetReady = true;
           playerVisual.visible = true;
           modelProgress.player = 1;
@@ -1851,6 +1894,7 @@ export function startPursuitGame(
             car.position.y = 0.03;
             cop.visual.add(car);
             cop.wheels = rigWheels(car);
+            makeObjectUnlit(car);
             cop.root.visible = index < currentLevel().cops;
           });
           policeAssetReady = true;
@@ -3473,8 +3517,12 @@ export function startPursuitGame(
               : 0;
           });
           const flash = Math.sin(time * 8 + cop.phase) > 0;
-          (cop.red.material as THREE.MeshStandardMaterial).emissiveIntensity = flash ? 6 : 0.35;
-          (cop.blue.material as THREE.MeshStandardMaterial).emissiveIntensity = flash ? 0.35 : 6;
+          (cop.red.material as THREE.MeshBasicMaterial).color.setHex(
+            flash ? 0xff294b : 0x5c1628,
+          );
+          (cop.blue.material as THREE.MeshBasicMaterial).color.setHex(
+            flash ? 0x143a69 : 0x248fff,
+          );
           const distance = progress - cop.progress;
           const lateralGap = Math.abs(cop.lane - lane);
           if (distance < 10.5 && distance > -2 && lateralGap < 5.8) {
@@ -3523,7 +3571,6 @@ export function startPursuitGame(
       }
 
       setTrackPosition(playerRoot.position, progress, lane, 0.03, levelIndex);
-      const playerX = playerRoot.position.x;
       const movementHeading =
         speed > 1
           ? Math.asin(
@@ -3611,8 +3658,6 @@ export function startPursuitGame(
       );
       smoothedLook.lerp(lookPosition, 1 - Math.exp(-8.5 * dt));
       camera.lookAt(smoothedLook);
-      sun.position.set(playerX - 35, 55, -progress + 20);
-      sun.target.position.set(playerX, 0, -progress - 10);
 
       clouds.forEach((cloud) => {
         if (!cloud.root.visible) return;
