@@ -72,6 +72,7 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /driveableLaneLimit/);
   assert.match(game, /headingOffset/);
   assert.match(game, /maximumHeading/);
+  assert.match(game, /counterSteering/);
   assert.match(game, /corneringRoll/);
   assert.match(game, /scheduleChordStab/);
   assert.match(game, /scheduleTensionSweep/);

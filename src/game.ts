@@ -2643,11 +2643,14 @@ export function startPursuitGame(
         const targetSteer =
           Math.sign(rawSteer) * Math.pow(Math.abs(rawSteer), 1.18);
         const speedRatio = THREE.MathUtils.clamp(speed / 38, 0, 1);
-        const steeringResponse = THREE.MathUtils.lerp(7.4, 4.8, speedRatio);
+        const counterSteering = targetSteer * steer < -0.02;
+        const steeringResponse =
+          THREE.MathUtils.lerp(10.8, 7.6, speedRatio) +
+          (counterSteering ? 3.4 : 0);
         steer = THREE.MathUtils.damp(
           steer,
           targetSteer,
-          rawSteer === 0 ? steeringResponse + 2.2 : steeringResponse,
+          rawSteer === 0 ? steeringResponse + 3 : steeringResponse,
           dt,
         );
         const boosting = input.boost && nitro > 0.5 && speed > 8;
@@ -2672,20 +2675,23 @@ export function startPursuitGame(
           nitro = Math.min(100, nitro + 5.5 * dt);
         }
         const steeringAuthority = THREE.MathUtils.smoothstep(speed, 0.8, 7);
-        const maximumHeading = THREE.MathUtils.lerp(0.31, 0.185, speedRatio);
+        const maximumHeading = THREE.MathUtils.lerp(0.34, 0.23, speedRatio);
         const targetHeading = steer * maximumHeading * steeringAuthority;
         headingOffset = dampAngle(
           headingOffset,
           targetHeading,
-          THREE.MathUtils.lerp(6.2, 4.1, speedRatio),
+          THREE.MathUtils.lerp(9.4, 6.7, speedRatio) +
+            (counterSteering ? 1.6 : 0),
           dt,
         );
         const targetLateralSpeed =
-          Math.sin(headingOffset) * speed * THREE.MathUtils.lerp(0.82, 0.94, speedRatio);
+          Math.sin(headingOffset) *
+          speed *
+          THREE.MathUtils.lerp(0.88, 0.99, speedRatio);
         lateral = THREE.MathUtils.damp(
           lateral,
           targetLateralSpeed,
-          boosting ? 3.8 : 4.9,
+          boosting ? 5.4 : 6.6,
           dt,
         );
         const upcomingTurn = Math.atan2(
@@ -2730,8 +2736,8 @@ export function startPursuitGame(
           steerPivot.rotation.y = front
             ? THREE.MathUtils.damp(
                 steerPivot.rotation.y,
-                -steer * THREE.MathUtils.lerp(0.42, 0.3, speedRatio),
-                11,
+                -steer * THREE.MathUtils.lerp(0.44, 0.34, speedRatio),
+                13,
                 dt,
               )
             : 0;
