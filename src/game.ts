@@ -90,6 +90,7 @@ const ENGINE_DOWNSHIFT_LOCKOUT = 0.78;
 const PLAYER_STEER_RESPONSE = 16.5;
 const PLAYER_HIGH_SPEED_STEER_RESPONSE = 11.8;
 const PLAYER_TIRE_GRIP = 12.5;
+const NITRO_EXHAUST_OFFSETS = [-0.48, 0.48] as const;
 const NITRO_EXHAUST_Z = -2.55;
 
 function roadCenter(p: number, levelIndex: number) {
@@ -1680,7 +1681,7 @@ export function startPursuitGame(
       depthWrite: false,
     });
     const nitroFlames: THREE.Mesh[] = [];
-    for (const exhaustX of [-0.48, 0.48]) {
+    for (const exhaustX of NITRO_EXHAUST_OFFSETS) {
       const outer = new THREE.Mesh(
         new THREE.ConeGeometry(0.22, 1.65, mobileRendering ? 7 : 10),
         nitroOuterMaterial,
@@ -1852,6 +1853,8 @@ export function startPursuitGame(
               : sparkColors;
       const behindX = Math.sin(direction);
       const behindZ = Math.cos(direction);
+      const sideX = Math.cos(direction);
+      const sideZ = -Math.sin(direction);
       for (let i = 0; i < count; i++) {
         const p = particles[particleIndex++ % particles.length];
         p.mesh.visible = true;
@@ -1862,7 +1865,9 @@ export function startPursuitGame(
         p.mesh.rotation.set(0, style === "nitro" ? direction : Math.random() * Math.PI, 0);
         if (style === "nitro") {
           const streakLength = 2.2 + Math.random() * 2.6;
-          p.mesh.position.x += (Math.random() - 0.5) * 1.35;
+          const exhaustSpread = (Math.random() - 0.5) * 0.24;
+          p.mesh.position.x += sideX * exhaustSpread;
+          p.mesh.position.z += sideZ * exhaustSpread;
           p.mesh.position.y += Math.random() * 0.5;
           p.mesh.scale.set(0.3, 0.22, streakLength);
           const trailSpeed = 3 + Math.random() * 5;
@@ -2978,6 +2983,7 @@ export function startPursuitGame(
     const lookPosition = new THREE.Vector3();
     const smoothedLook = new THREE.Vector3(roadCenter(0, levelIndex), 1.05, -12);
     const effectPosition = new THREE.Vector3();
+    const nitroEmissionPosition = new THREE.Vector3();
     let raf = 0;
     let firstFrameReported = false;
     let gameReadyReported = false;
@@ -3023,21 +3029,22 @@ export function startPursuitGame(
         if (boosting) {
           nitro = Math.max(0, nitro - 22 * dt);
           if (!nitroWasActive || Math.random() < 0.82) {
-            setTrackPosition(
-              effectPosition,
-              progress - 2.7,
-              lane,
-              0.42,
-              levelIndex,
-            );
-            emit(
-              effectPosition,
-              !nitroWasActive ? (mobileRendering ? 7 : 11) : mobileRendering ? 1 : 2,
-              3.5,
-              false,
-              "nitro",
-              playerYaw,
-            );
+            for (const exhaustX of NITRO_EXHAUST_OFFSETS) {
+              nitroEmissionPosition.set(
+                exhaustX,
+                0.43,
+                NITRO_EXHAUST_Z - 0.2,
+              );
+              playerEffects.localToWorld(nitroEmissionPosition);
+              emit(
+                nitroEmissionPosition,
+                !nitroWasActive ? (mobileRendering ? 3 : 5) : 1,
+                3.5,
+                false,
+                "nitro",
+                playerYaw,
+              );
+            }
             if (!nitroWasActive) shake = Math.max(shake, 0.18);
           }
         } else {
