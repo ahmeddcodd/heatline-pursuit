@@ -21,6 +21,9 @@ type Cop = {
   phase: number;
   wheelSpin: number;
   yaw: number;
+  targetLane: number;
+  stun: number;
+  impactLean: number;
   red: THREE.Mesh;
   blue: THREE.Mesh;
 };
@@ -28,7 +31,8 @@ type Obstacle = {
   root: THREE.Object3D;
   progress: number;
   lane: number;
-  radius: number;
+  halfWidth: number;
+  halfLength: number;
   kind: "cone" | "crate" | "barrier" | "oil";
   hit: boolean;
 };
@@ -63,6 +67,10 @@ const LEVELS: LevelConfig[] = [
 ];
 
 const MAX_TRACK_LENGTH = LEVELS[LEVELS.length - 1].length;
+const PLAYER_HALF_WIDTH = 1.02;
+const PLAYER_HALF_LENGTH = 2.08;
+const COP_HALF_WIDTH = 1.08;
+const COP_HALF_LENGTH = 2.12;
 
 function roadCenter(p: number, levelIndex: number) {
   const level = LEVELS[levelIndex];
@@ -95,7 +103,7 @@ function roadFrame(p: number, levelIndex: number) {
   const centerX = roadCenter(p, levelIndex);
   const tangentX =
     roadCenter(p + sample, levelIndex) -
-    roadCenter(Math.max(0, p - sample), levelIndex);
+    roadCenter(p - sample, levelIndex);
   const tangentZ = -sample * 2;
   const tangentLength = Math.hypot(tangentX, tangentZ) || 1;
   return {
@@ -103,6 +111,44 @@ function roadFrame(p: number, levelIndex: number) {
     normalX: -tangentZ / tangentLength,
     normalZ: tangentX / tangentLength,
   };
+}
+
+function setTrackPosition(
+  target: THREE.Vector3,
+  progress: number,
+  lane: number,
+  height: number,
+  levelIndex: number,
+) {
+  const frame = roadFrame(progress, levelIndex);
+  return target.set(
+    frame.centerX + frame.normalX * lane,
+    height,
+    -progress + frame.normalZ * lane,
+  );
+}
+
+function sweptProgressDistance(from: number, to: number, target: number) {
+  const minimum = Math.min(from, to);
+  const maximum = Math.max(from, to);
+  if (target >= minimum && target <= maximum) return 0;
+  return Math.min(Math.abs(target - minimum), Math.abs(target - maximum));
+}
+
+function laneAtProgress(
+  fromProgress: number,
+  toProgress: number,
+  fromLane: number,
+  toLane: number,
+  targetProgress: number,
+) {
+  const distance = toProgress - fromProgress;
+  if (Math.abs(distance) < 0.0001) return toLane;
+  return THREE.MathUtils.lerp(
+    fromLane,
+    toLane,
+    THREE.MathUtils.clamp((targetProgress - fromProgress) / distance, 0, 1),
+  );
 }
 
 function dampAngle(current: number, target: number, smoothing: number, dt: number) {
@@ -317,9 +363,15 @@ export function startPursuitGame(
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x76c9f4);
     scene.fog = new THREE.Fog(0x9bd7ec, 70, 195);
+    const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+    const mobileRendering =
+      coarsePointer ||
+      Math.min(window.innerWidth, window.innerHeight) < 600;
     const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 650);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, mobileRendering ? 1.25 : 1.6),
+    );
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -331,7 +383,10 @@ export function startPursuitGame(
     const sun = new THREE.DirectionalLight(0xfff1cf, 3.15);
     sun.position.set(-35, 55, 20);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(
+      mobileRendering ? 512 : 1024,
+      mobileRendering ? 512 : 1024,
+    );
     sun.shadow.camera.left = -38;
     sun.shadow.camera.right = 38;
     sun.shadow.camera.top = 40;
@@ -1393,7 +1448,8 @@ export function startPursuitGame(
       kind: Obstacle["kind"],
       progress: number,
       lane: number,
-      radius: number,
+      halfWidth: number,
+      halfLength: number,
     ) => {
       const root = new THREE.Group();
       if (kind === "cone") {
@@ -1530,16 +1586,36 @@ export function startPursuitGame(
         const mesh = o as THREE.Mesh;
         if (mesh.isMesh) mesh.castShadow = true;
       });
-      root.position.set(roadCenter(progress, levelIndex) + lane, 0, -progress);
+      setTrackPosition(root.position, progress, lane, 0, levelIndex);
       root.rotation.y = roadAngle(progress, levelIndex);
       world.add(root);
-      obstacles.push({ root, progress, lane, radius, kind, hit: false });
+      obstacles.push({
+        root,
+        progress,
+        lane,
+        halfWidth,
+        halfLength,
+        kind,
+        hit: false,
+      });
     };
     const obstacleKinds: Obstacle["kind"][] = ["cone", "crate", "oil", "cone", "barrier"];
-    const obstacleRadius = { cone: 1.2, crate: 1.8, oil: 2.4, barrier: 3.4 };
+    const obstacleHitboxes = {
+      cone: { halfWidth: 0.56, halfLength: 0.56 },
+      crate: { halfWidth: 1.14, halfLength: 1.14 },
+      oil: { halfWidth: 2.15, halfLength: 1.2 },
+      barrier: { halfWidth: 2.72, halfLength: 0.72 },
+    };
     for (let i = 0; i < LEVELS[LEVELS.length - 1].hazards; i++) {
       const kind = obstacleKinds[i % obstacleKinds.length];
-      addObstacle(kind, 70 + i * 30, 0, obstacleRadius[kind]);
+      const hitbox = obstacleHitboxes[kind];
+      addObstacle(
+        kind,
+        70 + i * 30,
+        0,
+        hitbox.halfWidth,
+        hitbox.halfLength,
+      );
     }
 
     const playerRoot = new THREE.Group();
@@ -1579,6 +1655,9 @@ export function startPursuitGame(
         phase: i * 2.1,
         wheelSpin: 0,
         yaw: roadAngle(0, levelIndex),
+        targetLane: copFormation[i],
+        stun: 0,
+        impactLean: 0,
         ...lights,
       });
     }
@@ -1639,7 +1718,8 @@ export function startPursuitGame(
     const particles: Particle[] = [];
     const particleGeo = new THREE.BoxGeometry(0.13, 0.13, 0.13);
     const particleColors = [0xffd85a, 0xff6b35, 0xe8edf0, 0x74d38a, 0x55b7ff];
-    for (let i = 0; i < 96; i++) {
+    const particlePoolSize = mobileRendering ? 64 : 96;
+    for (let i = 0; i < particlePoolSize; i++) {
       const mesh = new THREE.Mesh(
         particleGeo,
         new THREE.MeshBasicMaterial({ color: particleColors[i % particleColors.length] }),
@@ -1682,18 +1762,6 @@ export function startPursuitGame(
     let audio: AudioContext | null = null;
     let master: GainNode | null = null;
     let musicBus: GainNode | null = null;
-    let sfxBus: GainNode | null = null;
-    let playerEnginePrimary: OscillatorNode | null = null;
-    let playerEngineHarmonic: OscillatorNode | null = null;
-    let playerEngineFilter: BiquadFilterNode | null = null;
-    let playerEngineGain: GainNode | null = null;
-    let windFilter: BiquadFilterNode | null = null;
-    let windGain: GainNode | null = null;
-    let copEngine: OscillatorNode | null = null;
-    let copEngineGain: GainNode | null = null;
-    let copSiren: OscillatorNode | null = null;
-    let copSirenGain: GainNode | null = null;
-    let copPanner: StereoPannerNode | null = null;
     let musicTimer: ReturnType<typeof setInterval> | null = null;
     let noiseBuffer: AudioBuffer | null = null;
     let nextMusicTime = 0;
@@ -1890,7 +1958,7 @@ export function startPursuitGame(
 
       const shouldOutput = hostAudioEnabled && !hostPaused && !muted;
       master.gain.cancelScheduledValues(audio.currentTime);
-      master.gain.setValueAtTime(shouldOutput ? 0.16 : 0, audio.currentTime);
+      master.gain.setValueAtTime(shouldOutput ? 0.21 : 0, audio.currentTime);
 
       if (!hostAudioEnabled || hostPaused || muted) {
         stopMusicScheduler();
@@ -1921,10 +1989,7 @@ export function startPursuitGame(
       master.connect(compressor).connect(audio.destination);
 
       musicBus = audio.createGain();
-      musicBus.gain.value = 0.72;
-      sfxBus = audio.createGain();
-      sfxBus.gain.value = 0.78;
-      sfxBus.connect(master);
+      musicBus.gain.value = 0.88;
       const delay = audio.createDelay(0.5);
       const feedback = audio.createGain();
       const delayWet = audio.createGain();
@@ -1946,108 +2011,8 @@ export function startPursuitGame(
         noise[i] = Math.random() * 2 - 1;
       }
 
-      const engineMix = audio.createGain();
-      const enginePrimaryLevel = audio.createGain();
-      const engineHarmonicLevel = audio.createGain();
-      const engineSaturation = audio.createWaveShaper();
-      const saturationCurve = new Float32Array(256);
-      for (let i = 0; i < saturationCurve.length; i++) {
-        const x = (i / (saturationCurve.length - 1)) * 2 - 1;
-        saturationCurve[i] = Math.tanh(x * 2.15);
-      }
-      engineSaturation.curve = saturationCurve;
-      engineSaturation.oversample = "2x";
-      enginePrimaryLevel.gain.value = 0.46;
-      engineHarmonicLevel.gain.value = 0.15;
-      playerEnginePrimary = audio.createOscillator();
-      playerEngineHarmonic = audio.createOscillator();
-      playerEngineFilter = audio.createBiquadFilter();
-      playerEngineGain = audio.createGain();
-      playerEnginePrimary.type = "sawtooth";
-      playerEngineHarmonic.type = "triangle";
-      playerEnginePrimary.frequency.value = 58;
-      playerEngineHarmonic.frequency.value = 116;
-      playerEngineFilter.type = "bandpass";
-      playerEngineFilter.frequency.value = 260;
-      playerEngineFilter.Q.value = 0.72;
-      playerEngineGain.gain.value = 0;
-      playerEnginePrimary.connect(enginePrimaryLevel).connect(engineMix);
-      playerEngineHarmonic.connect(engineHarmonicLevel).connect(engineMix);
-      engineMix
-        .connect(engineSaturation)
-        .connect(playerEngineFilter)
-        .connect(playerEngineGain)
-        .connect(sfxBus);
-      playerEnginePrimary.start();
-      playerEngineHarmonic.start();
-
-      const windSource = audio.createBufferSource();
-      windFilter = audio.createBiquadFilter();
-      windGain = audio.createGain();
-      windSource.buffer = noiseBuffer;
-      windSource.loop = true;
-      windFilter.type = "bandpass";
-      windFilter.frequency.value = 1450;
-      windFilter.Q.value = 0.55;
-      windGain.gain.value = 0;
-      windSource.connect(windFilter).connect(windGain).connect(sfxBus);
-      windSource.start();
-
-      copPanner = audio.createStereoPanner();
-      copEngine = audio.createOscillator();
-      copEngineGain = audio.createGain();
-      const copEngineFilter = audio.createBiquadFilter();
-      copEngine.type = "sawtooth";
-      copEngine.frequency.value = 64;
-      copEngineFilter.type = "lowpass";
-      copEngineFilter.frequency.value = 260;
-      copEngineFilter.Q.value = 0.85;
-      copEngineGain.gain.value = 0;
-      copEngine
-        .connect(copEngineFilter)
-        .connect(copEngineGain)
-        .connect(copPanner);
-      copEngine.start();
-
-      copSiren = audio.createOscillator();
-      copSirenGain = audio.createGain();
-      const sirenFilter = audio.createBiquadFilter();
-      copSiren.type = "sine";
-      copSiren.frequency.value = 720;
-      sirenFilter.type = "bandpass";
-      sirenFilter.frequency.value = 880;
-      sirenFilter.Q.value = 0.9;
-      copSirenGain.gain.value = 0;
-      copSiren
-        .connect(sirenFilter)
-        .connect(copSirenGain)
-        .connect(copPanner);
-      copPanner.connect(sfxBus);
-      copSiren.start();
-
       musicStep = 0;
       syncAudioPolicy();
-    };
-    const impactSound = () => {
-      if (
-        !audio ||
-        !master ||
-        muted ||
-        hostPaused ||
-        !hostAudioEnabled
-      ) {
-        return;
-      }
-      const osc = audio.createOscillator();
-      const gain = audio.createGain();
-      osc.type = "square";
-      osc.frequency.setValueAtTime(115, audio.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(38, audio.currentTime + 0.16);
-      gain.gain.setValueAtTime(0.26, audio.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.18);
-      osc.connect(gain).connect(sfxBus ?? master);
-      osc.start();
-      osc.stop(audio.currentTime + 0.2);
     };
 
     const configureTrack = () => {
@@ -2294,13 +2259,83 @@ export function startPursuitGame(
         obstacle.lane = THREE.MathUtils.clamp(laneWave * laneLimit, -laneLimit, laneLimit);
         obstacle.hit = false;
         obstacle.root.visible = active;
-        obstacle.root.position.set(
-          roadCenter(obstacle.progress, levelIndex) + obstacle.lane,
+        setTrackPosition(
+          obstacle.root.position,
+          obstacle.progress,
+          obstacle.lane,
           0,
-          -obstacle.progress,
+          levelIndex,
         );
         obstacle.root.rotation.set(0, roadAngle(obstacle.progress, levelIndex), 0);
       });
+    };
+
+    const driveableLaneLimit = () =>
+      Math.max(2.5, currentLevel().roadEdge - PLAYER_HALF_WIDTH - 0.28);
+
+    const choosePoliceLane = (cop: Cop, index: number, copSpeed: number) => {
+      const laneLimit = driveableLaneLimit();
+      const mastery = THREE.MathUtils.clamp(0.66 + levelIndex * 0.035, 0, 0.98);
+      const formationOffset =
+        copFormation[index] * (0.3 + levelIndex * 0.014);
+      const pursuitLane = THREE.MathUtils.clamp(
+        lane +
+          formationOffset +
+          Math.sin(time * (0.52 + index * 0.05) + cop.phase) *
+            (1.05 - mastery * 0.42),
+        -laneLimit,
+        laneLimit,
+      );
+      const lookAhead = 20 + copSpeed * 0.34 + levelIndex * 1.65;
+      const safety = 0.42 + mastery * 0.42;
+      const candidates = [pursuitLane];
+      const laneStep = 1.9;
+      for (let candidate = -laneLimit; candidate <= laneLimit; candidate += laneStep) {
+        candidates.push(candidate);
+      }
+      candidates.push(laneLimit, -laneLimit);
+
+      let bestLane = pursuitLane;
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const candidate of candidates) {
+        let score = Math.abs(candidate - pursuitLane) * (0.72 + mastery * 0.32);
+        score += Math.abs(candidate - cop.lane) * (0.2 - mastery * 0.08);
+
+        for (const obstacle of obstacles) {
+          if (!obstacle.root.visible || obstacle.hit) continue;
+          const ahead = obstacle.progress - cop.progress;
+          if (ahead < -COP_HALF_LENGTH || ahead > lookAhead) continue;
+          const requiredClearance =
+            COP_HALF_WIDTH + obstacle.halfWidth + safety;
+          const clearance = Math.abs(candidate - obstacle.lane);
+          const urgency = 1 - THREE.MathUtils.clamp(ahead / lookAhead, 0, 1);
+          if (clearance < requiredClearance) {
+            score += (requiredClearance - clearance + 0.4) * (32 + urgency * 120);
+          } else {
+            score += urgency * 0.45 / Math.max(0.25, clearance - requiredClearance);
+          }
+        }
+
+        for (let otherIndex = 0; otherIndex < currentLevel().cops; otherIndex++) {
+          if (otherIndex === index) continue;
+          const other = cops[otherIndex];
+          const progressGap = Math.abs(other.progress - cop.progress);
+          if (progressGap > 12) continue;
+          const requiredSeparation = 2 * COP_HALF_WIDTH + 0.28;
+          const laneGap = Math.abs(candidate - other.lane);
+          if (laneGap < requiredSeparation) {
+            score +=
+              (requiredSeparation - laneGap + 0.2) *
+              (16 + (1 - progressGap / 12) * 48);
+          }
+        }
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestLane = candidate;
+        }
+      }
+      return THREE.MathUtils.clamp(bestLane, -laneLimit, laneLimit);
     };
 
     const reset = () => {
@@ -2319,8 +2354,8 @@ export function startPursuitGame(
       const startX = roadCenter(0, levelIndex);
       playerRoot.position.set(startX, 0.03, 0);
       playerRoot.rotation.y = roadAngle(0, levelIndex);
-      camera.position.set(startX, 6.4, 12);
-      smoothedLook.set(startX, 1.05, -12);
+      setTrackPosition(camera.position, -12, 0, 6.4, levelIndex);
+      setTrackPosition(smoothedLook, 12, 0, 1.05, levelIndex);
       particles.forEach((particle) => {
         particle.life = 0;
         particle.mesh.visible = false;
@@ -2331,17 +2366,17 @@ export function startPursuitGame(
         o.root.rotation.x = 0;
         o.root.rotation.z = 0;
         o.root.rotation.y = roadAngle(o.progress, levelIndex);
-        o.root.position.set(
-          roadCenter(o.progress, levelIndex) + o.lane,
-          0,
-          -o.progress,
-        );
+        setTrackPosition(o.root.position, o.progress, o.lane, 0, levelIndex);
       });
       cops.forEach((cop, i) => {
         cop.progress = -24 - i * 12;
         cop.lane = copFormation[i];
+        cop.targetLane = copFormation[i];
         cop.wheelSpin = 0;
         cop.yaw = roadAngle(0, levelIndex);
+        cop.stun = 0;
+        cop.impactLean = 0;
+        cop.visual.rotation.z = 0;
         cop.root.visible = i < currentLevel().cops;
       });
     };
@@ -2432,6 +2467,7 @@ export function startPursuitGame(
       const rect = steerPad.getBoundingClientRect();
       input.touch = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width - 0.5) * 2, -1, 1);
       if (knobRef.current) knobRef.current.style.transform = `translateX(${input.touch * 38}px)`;
+      steerPad.setAttribute("aria-valuenow", input.touch.toFixed(2));
     };
     const steerDown = (e: PointerEvent) => {
       if (hostPaused) return;
@@ -2446,6 +2482,7 @@ export function startPursuitGame(
     const steerUp = () => {
       input.touch = 0;
       if (knobRef.current) knobRef.current.style.transform = "translateX(0)";
+      steerPad?.setAttribute("aria-valuenow", "0");
     };
     steerPad?.addEventListener("pointerdown", steerDown);
     steerPad?.addEventListener("pointermove", steerMove);
@@ -2456,9 +2493,12 @@ export function startPursuitGame(
       if (hostPaused) return;
       if (!mount.clientWidth || !mount.clientHeight) return;
       camera.aspect = mount.clientWidth / mount.clientHeight;
+      camera.fov = camera.aspect < 0.72 ? 64 : camera.aspect < 1.15 ? 59 : 56;
       camera.updateProjectionMatrix();
       renderer.setSize(mount.clientWidth, mount.clientHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+      renderer.setPixelRatio(
+        Math.min(window.devicePixelRatio, mobileRendering ? 1.25 : 1.6),
+      );
     };
     window.addEventListener("resize", resize);
     resize();
@@ -2482,11 +2522,13 @@ export function startPursuitGame(
       cooldown = Math.max(0, cooldown - dt);
 
       if (gamePhase === "playing") {
+        const previousProgress = progress;
+        const previousLane = lane;
         const keys = (input.left ? -1 : 0) + (input.right ? 1 : 0);
         const targetSteer = Math.abs(input.touch) > 0.03 ? input.touch : keys;
         steer = THREE.MathUtils.damp(steer, targetSteer, 6.4, dt);
         const boosting = input.boost && nitro > 0.5 && speed > 8;
-        const autoGas = window.matchMedia("(pointer: coarse)").matches && !input.brake;
+        const autoGas = coarsePointer && !input.brake;
         if (input.gas || autoGas) speed += (boosting ? 20 : 13.5) * dt;
         else speed -= 4.5 * dt;
         if (input.brake) speed -= 28 * dt;
@@ -2494,10 +2536,12 @@ export function startPursuitGame(
         if (boosting) {
           nitro = Math.max(0, nitro - 22 * dt);
           if (Math.random() < 0.65) {
-            effectPosition.set(
-              roadCenter(progress, levelIndex) + lane,
+            setTrackPosition(
+              effectPosition,
+              progress - 2.4,
+              lane,
               0.35,
-              -progress + 2.4,
+              levelIndex,
             );
             emit(effectPosition, 1, 2.2);
           }
@@ -2517,18 +2561,20 @@ export function startPursuitGame(
           ),
         );
         lateral += upcomingTurn * speed * speed * (0.022 + levelIndex * 0.0016) * dt;
-        lane = THREE.MathUtils.clamp(
-          lane + lateral * dt,
-          -currentLevel().roadEdge - 5,
-          currentLevel().roadEdge + 5,
-        );
-        if (Math.abs(lane) > currentLevel().roadEdge - 1.4) {
-          speed = Math.max(0, speed - 15 * dt);
+        const laneLimit = driveableLaneLimit();
+        const requestedLane = lane + lateral * dt;
+        lane = THREE.MathUtils.clamp(requestedLane, -laneLimit, laneLimit);
+        if (lane !== requestedLane) {
+          lateral *= -0.16;
+          speed = Math.max(0, speed - 18 * dt);
+          shake = Math.max(shake, 0.12);
           if (Math.random() < 0.3) {
-            effectPosition.set(
-              roadCenter(progress, levelIndex) + lane,
+            setTrackPosition(
+              effectPosition,
+              progress - 2,
+              lane,
               0.1,
-              -progress + 2,
+              levelIndex,
             );
             emit(effectPosition, 1, 1.2);
           }
@@ -2542,10 +2588,12 @@ export function startPursuitGame(
             : 0;
         });
         if (Math.abs(steer) > 0.58 && speed > 20 && Math.random() < 0.38) {
-          effectPosition.set(
-            roadCenter(progress, levelIndex) + lane - steer * 0.8,
+          setTrackPosition(
+            effectPosition,
+            progress - 1.7,
+            lane - steer * 0.8,
             0.15,
-            -progress + 1.7,
+            levelIndex,
           );
           emit(effectPosition, 1, 1.6);
         }
@@ -2558,25 +2606,40 @@ export function startPursuitGame(
             obstacle.root.position.y -= dt * 0.65;
             continue;
           }
-          const playerX = roadCenter(progress, levelIndex) + lane;
-          const obstacleX = roadCenter(obstacle.progress, levelIndex) + obstacle.lane;
+          const collisionLane = laneAtProgress(
+            previousProgress,
+            progress,
+            previousLane,
+            lane,
+            obstacle.progress,
+          );
           if (
-            Math.abs(progress - obstacle.progress) < 2.7 &&
-            Math.abs(playerX - obstacleX) < obstacle.radius + 1.15
+            sweptProgressDistance(
+              previousProgress,
+              progress,
+              obstacle.progress,
+            ) <= PLAYER_HALF_LENGTH + obstacle.halfLength &&
+            Math.abs(collisionLane - obstacle.lane) <=
+              PLAYER_HALF_WIDTH + obstacle.halfWidth
           ) {
             obstacle.hit = true;
             speed *= obstacle.kind === "oil" ? 0.72 : 0.5;
-            lateral += (playerX > obstacleX ? 1 : -1) * 9;
+            lateral += (collisionLane > obstacle.lane ? 1 : -1) * 9;
             shake = 0.85;
-            impactSound();
-            effectPosition.set(obstacleX, 0.8, -obstacle.progress);
+            setTrackPosition(
+              effectPosition,
+              obstacle.progress,
+              obstacle.lane,
+              0.8,
+              levelIndex,
+            );
             emit(effectPosition, obstacle.kind === "oil" ? 8 : 18, 7);
           }
         }
 
-        let pressure = 0;
-        cops.forEach((cop, index) => {
-          if (index >= currentLevel().cops) return;
+        const activeCopCount = currentLevel().cops;
+        for (let index = 0; index < activeCopCount; index++) {
+          const cop = cops[index];
           const distance = progress - cop.progress;
           const grip = currentLevel().policeGrip;
           const catchup =
@@ -2587,36 +2650,152 @@ export function startPursuitGame(
                 : distance < 6.2
                   ? -2.5
                   : 0.6 * grip;
-          const copSpeed =
-            speed < 5
-              ? Math.max(0, speed * 0.75)
-              : THREE.MathUtils.clamp(speed + catchup + index * 0.25, 7, 43);
-          const chaseGap = 6.2 + (index % 2) * 1.7 + Math.floor(index / 2) * 2.7;
-          cop.progress = Math.min(cop.progress + copSpeed * dt, progress - chaseGap);
-          cop.wheelSpin -= copSpeed * dt * 1.55;
-          const laneLimit = currentLevel().roadEdge - 1.4;
-          const formationOffset = copFormation[index] * (0.34 + levelIndex * 0.018);
-          const desired = THREE.MathUtils.clamp(
-            lane +
-              formationOffset +
-              Math.sin(time * (0.65 + index * 0.07) + cop.phase) * (1.6 + levelIndex * 0.08),
-            -laneLimit,
-            laneLimit,
+          cop.stun = Math.max(0, cop.stun - dt);
+          const baseCopSpeed = THREE.MathUtils.clamp(
+            Math.max(speed, 4.5) + catchup + index * 0.25,
+            2,
+            43,
           );
-          cop.lane = THREE.MathUtils.damp(cop.lane, desired, 1.18 * grip, dt);
-          const copX = roadCenter(cop.progress, levelIndex) + cop.lane;
-          cop.root.position.set(copX, 0.02, -cop.progress);
+          const copSpeed = baseCopSpeed * (cop.stun > 0 ? 0.32 : 1);
+          const chaseGap = 6.2 + (index % 2) * 1.7 + Math.floor(index / 2) * 2.7;
+          const previousCopProgress = cop.progress;
+          const previousCopLane = cop.lane;
+          cop.progress = Math.min(
+            cop.progress + copSpeed * dt,
+            progress - chaseGap,
+          );
+          cop.wheelSpin -= copSpeed * dt * 1.55;
+          cop.targetLane = choosePoliceLane(cop, index, copSpeed);
+          cop.lane = THREE.MathUtils.damp(
+            cop.lane,
+            cop.targetLane,
+            (2.15 + levelIndex * 0.11) * grip,
+            dt,
+          );
+          cop.lane = THREE.MathUtils.clamp(
+            cop.lane,
+            -driveableLaneLimit(),
+            driveableLaneLimit(),
+          );
+
+          for (const obstacle of obstacles) {
+            if (!obstacle.root.visible || obstacle.hit) continue;
+            const collisionLane = laneAtProgress(
+              previousCopProgress,
+              cop.progress,
+              previousCopLane,
+              cop.lane,
+              obstacle.progress,
+            );
+            if (
+              sweptProgressDistance(
+                previousCopProgress,
+                cop.progress,
+                obstacle.progress,
+              ) <= COP_HALF_LENGTH + obstacle.halfLength &&
+              Math.abs(collisionLane - obstacle.lane) <=
+                COP_HALF_WIDTH + obstacle.halfWidth
+            ) {
+              obstacle.hit = true;
+              cop.stun = 0.62;
+              cop.progress = THREE.MathUtils.lerp(
+                previousCopProgress,
+                cop.progress,
+                obstacle.kind === "oil" ? 0.72 : 0.38,
+              );
+              const impactDirection = collisionLane >= obstacle.lane ? 1 : -1;
+              cop.lane = THREE.MathUtils.clamp(
+                cop.lane + impactDirection * 0.48,
+                -driveableLaneLimit(),
+                driveableLaneLimit(),
+              );
+              cop.impactLean = -impactDirection * 0.14;
+              setTrackPosition(
+                effectPosition,
+                obstacle.progress,
+                obstacle.lane,
+                0.75,
+                levelIndex,
+              );
+              emit(effectPosition, obstacle.kind === "oil" ? 5 : 11, 5.5);
+              break;
+            }
+          }
+        }
+
+        const minimumPoliceLaneGap = COP_HALF_WIDTH * 2 + 0.2;
+        const minimumPoliceProgressGap = COP_HALF_LENGTH * 2 + 0.25;
+        for (let first = 0; first < activeCopCount; first++) {
+          for (let second = first + 1; second < activeCopCount; second++) {
+            const a = cops[first];
+            const b = cops[second];
+            const progressGap = Math.abs(a.progress - b.progress);
+            const laneGap = Math.abs(a.lane - b.lane);
+            if (
+              progressGap >= minimumPoliceProgressGap ||
+              laneGap >= minimumPoliceLaneGap
+            ) {
+              continue;
+            }
+
+            const direction =
+              laneGap > 0.05
+                ? Math.sign(a.lane - b.lane)
+                : (first + second) % 2 === 0
+                  ? 1
+                  : -1;
+            const push = (minimumPoliceLaneGap - laneGap) * 0.52;
+            const laneLimit = driveableLaneLimit();
+            a.lane = THREE.MathUtils.clamp(a.lane + direction * push, -laneLimit, laneLimit);
+            b.lane = THREE.MathUtils.clamp(b.lane - direction * push, -laneLimit, laneLimit);
+
+            if (
+              Math.abs(a.lane - b.lane) < minimumPoliceLaneGap * 0.82 &&
+              Math.abs(a.progress - b.progress) < minimumPoliceProgressGap
+            ) {
+              const leading = a.progress >= b.progress ? a : b;
+              const trailing = leading === a ? b : a;
+              trailing.progress = Math.min(
+                trailing.progress,
+                leading.progress - minimumPoliceProgressGap,
+              );
+            }
+          }
+        }
+
+        let pressure = 0;
+        for (let index = 0; index < activeCopCount; index++) {
+          const cop = cops[index];
+          const grip = currentLevel().policeGrip;
+          setTrackPosition(
+            cop.root.position,
+            cop.progress,
+            cop.lane,
+            0.02,
+            levelIndex,
+          );
           const copTargetYaw =
             roadAngle(cop.progress, levelIndex) -
-            THREE.MathUtils.clamp((desired - cop.lane) * 0.05, -0.24, 0.24);
+            THREE.MathUtils.clamp(
+              (cop.targetLane - cop.lane) * 0.05,
+              -0.24,
+              0.24,
+            );
           cop.yaw = dampAngle(cop.yaw, copTargetYaw, 7.5 * grip, dt);
           cop.root.rotation.y = cop.yaw;
+          cop.visual.rotation.z = THREE.MathUtils.damp(
+            cop.visual.rotation.z,
+            cop.impactLean,
+            10,
+            dt,
+          );
+          cop.impactLean = THREE.MathUtils.damp(cop.impactLean, 0, 5, dt);
           cop.wheels.forEach(({ steerPivot, spinPivot, front }) => {
             spinPivot.rotation.x = cop.wheelSpin;
             steerPivot.rotation.y = front
               ? THREE.MathUtils.damp(
                   steerPivot.rotation.y,
-                  -(desired - cop.lane) * 0.09,
+                  -(cop.targetLane - cop.lane) * 0.09,
                   11,
                   dt,
                 )
@@ -2625,22 +2804,20 @@ export function startPursuitGame(
           const flash = Math.sin(time * 8 + cop.phase) > 0;
           (cop.red.material as THREE.MeshStandardMaterial).emissiveIntensity = flash ? 6 : 0.35;
           (cop.blue.material as THREE.MeshStandardMaterial).emissiveIntensity = flash ? 0.35 : 6;
-          const lateralGap = Math.abs(
-            copX - (roadCenter(progress, levelIndex) + lane),
-          );
+          const distance = progress - cop.progress;
+          const lateralGap = Math.abs(cop.lane - lane);
           if (distance < 10.5 && distance > -2 && lateralGap < 5.8) {
             pressure +=
               (1 - Math.max(distance, 0) / 11.5) *
               (1 - lateralGap / 6.2);
             if (distance < 7.2 && lateralGap < 2.2 && cooldown <= 0) {
-              lateral +=
-                (roadCenter(progress, levelIndex) + lane > copX ? 1 : -1) * 4.5;
+              lateral += (lane > cop.lane ? 1 : -1) * 4.5;
               speed *= 0.92;
               shake = 0.32;
               cooldown = 0.55;
             }
           }
-        });
+        }
         bust = THREE.MathUtils.clamp(
           bust +
             (pressure > 0.05
@@ -2660,10 +2837,12 @@ export function startPursuitGame(
           );
           setPhase("won");
           speed = 18;
-          effectPosition.set(
-            roadCenter(currentLevel().length, levelIndex),
+          setTrackPosition(
+            effectPosition,
+            currentLevel().length,
+            0,
             1,
-            -currentLevel().length,
+            levelIndex,
           );
           emit(effectPosition, 90, 12, true);
         } else if (bust >= 100) {
@@ -2676,8 +2855,8 @@ export function startPursuitGame(
         speed = Math.max(0, speed - 7 * dt);
       }
 
-      const playerX = roadCenter(progress, levelIndex) + lane;
-      playerRoot.position.set(playerX, 0.03, -progress);
+      setTrackPosition(playerRoot.position, progress, lane, 0.03, levelIndex);
+      const playerX = playerRoot.position.x;
       const playerTargetYaw =
         roadAngle(progress, levelIndex) -
         Math.atan2(lateral, Math.max(speed, 7)) -
@@ -2691,15 +2870,28 @@ export function startPursuitGame(
         dt,
       );
       const ratio = speed / 38;
-      camPosition.set(playerX - steer * 0.7, 6.3 + ratio * 1.4, -progress + 11.5 + ratio * 2.5);
+      const cameraDistance = 11.5 + ratio * 2.5;
+      setTrackPosition(
+        camPosition,
+        progress - cameraDistance,
+        lane,
+        6.3 + ratio * 1.4,
+        levelIndex,
+      );
       if (shake > 0.01) {
         camPosition.x += (Math.random() - 0.5) * shake;
         camPosition.y += (Math.random() - 0.5) * shake * 0.5;
         shake *= Math.exp(-8 * dt);
       }
-      camera.position.lerp(camPosition, 1 - Math.exp(-5.5 * dt));
-      lookPosition.set(playerX, 1.05, -progress - 11 - ratio * 8);
-      smoothedLook.lerp(lookPosition, 1 - Math.exp(-7 * dt));
+      camera.position.lerp(camPosition, 1 - Math.exp(-7.2 * dt));
+      setTrackPosition(
+        lookPosition,
+        progress + 11 + ratio * 8,
+        lane,
+        1.05,
+        levelIndex,
+      );
+      smoothedLook.lerp(lookPosition, 1 - Math.exp(-8.5 * dt));
       camera.lookAt(smoothedLook);
       sun.position.set(playerX - 35, 55, -progress + 20);
       sun.target.position.set(playerX, 0, -progress - 10);
@@ -2720,122 +2912,14 @@ export function startPursuitGame(
         p.mesh.scale.multiplyScalar(Math.max(0.92, 1 - dt * 0.7));
         if (p.life <= 0) p.mesh.visible = false;
       });
-      if (
-        audio &&
-        musicBus &&
-        playerEnginePrimary &&
-        playerEngineHarmonic &&
-        playerEngineFilter &&
-        playerEngineGain &&
-        windFilter &&
-        windGain &&
-        copEngine &&
-        copEngineGain &&
-        copSiren &&
-        copSirenGain &&
-        copPanner
-      ) {
-        const speedRatio = THREE.MathUtils.clamp(speed / 48, 0, 1);
-        const automaticThrottle =
-          window.matchMedia("(pointer: coarse)").matches && !input.brake;
-        const throttle = input.gas || automaticThrottle ? 1 : input.brake ? 0.18 : 0.38;
-        const gearLength = 7.6;
-        const gear = Math.min(5, Math.floor(speed / gearLength));
-        const gearProgress =
-          (speed - gear * gearLength) / gearLength;
-        const engineFundamental =
-          55 + gearProgress * 53 + gear * 2.8 + throttle * 7;
-        playerEnginePrimary.frequency.setTargetAtTime(
-          engineFundamental,
-          audio.currentTime,
-          0.045,
-        );
-        playerEngineHarmonic.frequency.setTargetAtTime(
-          engineFundamental * 2.03,
-          audio.currentTime,
-          0.038,
-        );
-        playerEngineFilter.frequency.setTargetAtTime(
-          210 + engineFundamental * 2.7 + throttle * 75,
-          audio.currentTime,
-          0.07,
-        );
-        const playerEngineLevel =
-          gamePhase === "playing"
-            ? 0.028 + speedRatio * 0.043 + throttle * 0.009
-            : gamePhase === "won"
-              ? 0.022 + speedRatio * 0.028
-              : 0.009;
-        playerEngineGain.gain.setTargetAtTime(
-          playerEngineLevel,
-          audio.currentTime,
-          0.075,
-        );
-        windFilter.frequency.setTargetAtTime(
-          1100 + speedRatio * 1250,
-          audio.currentTime,
-          0.12,
-        );
-        windGain.gain.setTargetAtTime(
-          gamePhase === "playing" ? speedRatio * speedRatio * 0.016 : 0,
-          audio.currentTime,
-          0.18,
-        );
-
-        let closestCopDistance = Number.POSITIVE_INFINITY;
-        let closestCopPan = 0;
-        for (let i = 0; i < currentLevel().cops; i++) {
-          const cop = cops[i];
-          const distance = Math.abs(progress - cop.progress);
-          if (distance < closestCopDistance) {
-            closestCopDistance = distance;
-            closestCopPan = THREE.MathUtils.clamp(
-              (cop.lane - lane) / Math.max(5, currentLevel().roadEdge),
-              -0.82,
-              0.82,
-            );
-          }
-        }
-        const copProximity =
-          gamePhase === "playing"
-            ? THREE.MathUtils.clamp(1 - closestCopDistance / 58, 0, 1)
-            : 0;
-        copPanner.pan.setTargetAtTime(
-          closestCopPan,
-          audio.currentTime,
-          0.12,
-        );
-        copEngine.frequency.setTargetAtTime(
-          52 + speed * 2.35 + copProximity * 16,
-          audio.currentTime,
-          0.065,
-        );
-        copEngineGain.gain.setTargetAtTime(
-          copProximity * (0.014 + speedRatio * 0.022),
-          audio.currentTime,
-          0.12,
-        );
-        const sirenHighTone = Math.floor(time * 1.72) % 2 === 1;
-        const sirenFrequency =
-          (sirenHighTone ? 945 : 690) + Math.sin(time * 9.5) * 11;
-        copSiren.frequency.setTargetAtTime(
-          sirenFrequency,
-          audio.currentTime,
-          0.055,
-        );
-        copSirenGain.gain.setTargetAtTime(
-          copProximity * (0.021 + bust * 0.00024),
-          audio.currentTime,
-          0.11,
-        );
-
+      if (audio && musicBus) {
         const musicLevel =
           gamePhase === "playing"
-            ? 0.74 - copProximity * 0.085 - Math.min(0.035, bust * 0.00035)
+            ? 0.94
             : gamePhase === "won"
-              ? 0.58
-              : 0.39;
-        musicBus.gain.setTargetAtTime(musicLevel, audio.currentTime, 0.18);
+              ? 0.72
+              : 0.54;
+        musicBus.gain.setTargetAtTime(musicLevel, audio.currentTime, 0.16);
       }
       if (speedRef.current) speedRef.current.textContent = String(Math.round(speed * 6.1));
       if (distanceRef.current) {

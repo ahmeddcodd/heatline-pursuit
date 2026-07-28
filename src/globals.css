@@ -82,9 +82,9 @@ button {
 
 .top-bar {
   position: absolute;
-  top: clamp(14px, 2.2vw, 28px);
-  right: clamp(14px, 2.2vw, 30px);
-  left: clamp(14px, 2.2vw, 30px);
+  top: max(clamp(14px, 2.2vw, 28px), env(safe-area-inset-top));
+  right: max(clamp(14px, 2.2vw, 30px), env(safe-area-inset-right));
+  left: max(clamp(14px, 2.2vw, 30px), env(safe-area-inset-left));
   display: grid;
   grid-template-columns: auto minmax(210px, 440px) auto;
   align-items: start;
@@ -447,6 +447,8 @@ button {
 .result-card {
   position: relative;
   width: min(480px, 92vw);
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
   padding: 48px clamp(24px, 5vw, 58px) 34px;
   color: var(--ink);
   border-top: 9px solid var(--yellow);
@@ -568,12 +570,13 @@ button {
 
   .mobile-controls {
     position: absolute;
-    right: 18px;
+    right: max(18px, env(safe-area-inset-right));
     bottom: max(18px, env(safe-area-inset-bottom));
-    left: 18px;
+    left: max(18px, env(safe-area-inset-left));
     display: flex;
     align-items: end;
     justify-content: space-between;
+    gap: 12px;
   }
 
   .steer-control {
@@ -724,16 +727,90 @@ button {
   }
 
   .steer-control {
-    width: 134px;
+    width: clamp(116px, 38vw, 134px);
+    height: 68px;
   }
 
   .pedal-stack {
-    width: 132px;
+    width: clamp(120px, 38vw, 132px);
   }
 
   .pedal {
     width: 58px;
     height: 58px;
+  }
+}
+
+@media (max-width: 620px) and (orientation: portrait) {
+  .top-bar {
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
+    gap: 7px 9px;
+    align-items: stretch;
+  }
+
+  .speed-card {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .sound-button {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    height: 100%;
+  }
+
+  .mission-card {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .danger-meter {
+    top: max(174px, calc(env(safe-area-inset-top) + 164px));
+    width: calc(100% - 36px);
+  }
+
+  .mobile-controls {
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    gap: 8px;
+  }
+
+  .result-screen {
+    padding: 24px 14px;
+  }
+
+  .result-card {
+    width: min(100%, 440px);
+    padding: 40px 20px 24px;
+  }
+}
+
+@media (max-width: 360px) and (orientation: portrait) {
+  .top-bar {
+    right: max(8px, env(safe-area-inset-right));
+    left: max(8px, env(safe-area-inset-left));
+  }
+
+  .speed-card strong {
+    font-size: 27px;
+  }
+
+  .mission-card strong {
+    margin-block: 1px 5px;
+    font-size: 15px;
+  }
+
+  .danger-meter {
+    top: max(170px, calc(env(safe-area-inset-top) + 160px));
+  }
+
+  .pedal {
+    width: 54px;
+    height: 54px;
   }
 }
 
@@ -768,13 +845,13 @@ button {
   }
 
   .mobile-controls {
-    right: 12px;
-    bottom: 10px;
-    left: 12px;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
   }
 
   .danger-meter {
-    top: 77px;
+    top: 124px;
   }
 }
 

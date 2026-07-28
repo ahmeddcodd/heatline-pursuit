@@ -10,6 +10,7 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
     html,
     main,
     game,
+    styles,
     cloudSave,
     youtubePlayables,
     packageSource,
@@ -18,6 +19,7 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
     readFile(new URL("dist/index.html", root), "utf8"),
     readFile(new URL("src/main.ts", root), "utf8"),
     readFile(new URL("src/game.ts", root), "utf8"),
+    readFile(new URL("src/globals.css", root), "utf8"),
     readFile(new URL("src/cloud-save.ts", root), "utf8"),
     readFile(new URL("src/youtube-playables.ts", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
@@ -63,6 +65,14 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(youtubePlayables, /Number\.isSafeInteger\(value\)/);
   assert.match(youtubePlayables, /sendScore\(\{ value \}\)/);
   assert.match(game, /campaignScore = \(\) => completedThrough \+ 1/);
+  assert.match(game, /setTrackPosition\(/);
+  assert.match(game, /sweptProgressDistance\(/);
+  assert.match(game, /choosePoliceLane/);
+  assert.match(game, /minimumPoliceLaneGap/);
+  assert.match(game, /driveableLaneLimit/);
+  assert.doesNotMatch(game, /playerEnginePrimary|copEngineGain|copSirenGain/);
+  assert.match(styles, /max-width: 620px[^}]+orientation: portrait/s);
+  assert.match(styles, /safe-area-inset-(?:top|right|bottom|left)/);
   assert.match(youtubePlayables, /isAudioEnabled\(\)/);
   assert.match(youtubePlayables, /onAudioEnabledChange/);
   assert.match(youtubePlayables, /onPause/);
