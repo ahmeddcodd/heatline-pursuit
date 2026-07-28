@@ -71,7 +71,9 @@ const PLAYER_HALF_WIDTH = 1.02;
 const PLAYER_HALF_LENGTH = 2.08;
 const COP_HALF_WIDTH = 1.08;
 const COP_HALF_LENGTH = 2.12;
-const ENGINE_GEAR_SPEEDS = [0, 7.5, 14.5, 22, 30.5, 39.5, 50] as const;
+const ENGINE_GEAR_SPEEDS = [0, 10.5, 20.5, 29.5, 37.5, 44, 50] as const;
+const ENGINE_UPSHIFT_LOCKOUT = 1.05;
+const ENGINE_DOWNSHIFT_LOCKOUT = 0.78;
 
 function roadCenter(p: number, levelIndex: number) {
   const level = LEVELS[levelIndex];
@@ -2197,9 +2199,9 @@ export function startPursuitGame(
       const subLevel = audio.createGain();
       const engineDrive = audio.createWaveShaper();
       const enginePanner = audio.createStereoPanner();
-      primaryLevel.gain.value = 0.48;
-      harmonicLevel.gain.value = 0.17;
-      subLevel.gain.value = 0.28;
+      primaryLevel.gain.value = 0.44;
+      harmonicLevel.gain.value = 0.12;
+      subLevel.gain.value = 0.25;
       const driveCurve = new Float32Array(384);
       for (let i = 0; i < driveCurve.length; i++) {
         const x = (i / (driveCurve.length - 1)) * 2 - 1;
@@ -2216,7 +2218,7 @@ export function startPursuitGame(
       sportsEngineGain = audio.createGain();
       const engineWaveReal = new Float32Array(8);
       const engineWaveImag = new Float32Array([
-        0, 1, 0.46, 0.22, 0.12, 0.065, 0.035, 0.018,
+        0, 1, 0.33, 0.14, 0.07, 0.034, 0.016, 0.008,
       ]);
       sportsEnginePrimary.setPeriodicWave(
         audio.createPeriodicWave(engineWaveReal, engineWaveImag, {
@@ -3261,12 +3263,12 @@ export function startPursuitGame(
             ENGINE_GEAR_SPEEDS[Math.max(0, engineGear - 1)] - 2.6;
           if (canUpshift && speed >= upshiftSpeed) {
             engineGear++;
-            shiftCooldown = 0.62;
+            shiftCooldown = ENGINE_UPSHIFT_LOCKOUT;
             shiftDip = 1;
             playGearShift(true);
           } else if (engineGear > 1 && speed < downshiftSpeed) {
             engineGear--;
-            shiftCooldown = 0.5;
+            shiftCooldown = ENGINE_DOWNSHIFT_LOCKOUT;
             shiftDip = 0.72;
             playGearShift(false);
           }
@@ -3299,24 +3301,32 @@ export function startPursuitGame(
           0,
           1,
         );
-        const engineFrequency = 50 + rpmRatio * 255;
+        // A ten-cylinder four-stroke produces five combustion pulses per
+        // crankshaft revolution. This compressed firing-rate mapping preserves
+        // that smooth, high-revving V10 character without becoming piercing.
+        const v10FiringFrequency = engineRpm / 12;
+        const engineFrequency = THREE.MathUtils.lerp(
+          72,
+          v10FiringFrequency,
+          0.72,
+        );
         sportsEnginePrimary.frequency.setTargetAtTime(
           engineFrequency,
           audio.currentTime,
           0.065,
         );
         sportsEngineHarmonic.frequency.setTargetAtTime(
-          engineFrequency * 2.015,
+          engineFrequency * 1.505,
           audio.currentTime,
           0.06,
         );
         sportsEngineSub.frequency.setTargetAtTime(
-          engineFrequency * 0.5,
+          engineFrequency * 0.502,
           audio.currentTime,
           0.075,
         );
         sportsEngineFilter.frequency.setTargetAtTime(
-          600 + rpmRatio * 1720 + throttle * 360,
+          680 + rpmRatio * 1950 + throttle * 410,
           audio.currentTime,
           0.085,
         );
