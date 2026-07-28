@@ -114,6 +114,11 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /cancelAnimationFrame\(raf\)/);
   assert.match(game, /void audio\.suspend\(\)/);
   assert.match(game, /gameShell\.inert = hostPaused/);
+  assert.doesNotMatch(game, /function fallbackCar/);
+  assert.match(game, /playerVisual\.visible = false/);
+  assert.match(game, /root\.visible = false/);
+  assert.match(game, /policeAssetReady && i < currentLevel\(\)\.cops/);
+  assert.match(game, /VEHICLE LOAD FAILED/);
   const runtimeSources = [main, game, cloudSave, youtubePlayables].join("\n");
   const forbiddenPersistenceApis = [
     ["local", "Storage"].join(""),

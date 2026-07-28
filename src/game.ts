@@ -196,44 +196,6 @@ function dampAngle(current: number, target: number, smoothing: number, dt: numbe
   return current + delta * (1 - Math.exp(-smoothing * dt));
 }
 
-function fallbackCar(color: number, police = false) {
-  const car = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(2.15, 0.68, 4.15),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.15 }),
-  );
-  body.position.y = 0.68;
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(1.65, 0.65, 1.85),
-    new THREE.MeshStandardMaterial({ color: 0x172432, roughness: 0.25 }),
-  );
-  cabin.position.set(0, 1.18, 0.05);
-  car.add(body, cabin);
-  const tire = new THREE.MeshStandardMaterial({ color: 0x111418, roughness: 0.95 });
-  for (const x of [-1.05, 1.05]) {
-    for (const z of [-1.35, 1.35]) {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 12), tire);
-      wheel.name = `${z < 0 ? "Front" : "Rear"}_Wheel`;
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(x, 0.45, z);
-      car.add(wheel);
-    }
-  }
-  if (police) {
-    const bar = new THREE.Mesh(
-      new THREE.BoxGeometry(1.3, 0.13, 0.28),
-      new THREE.MeshStandardMaterial({ color: 0x27323c, roughness: 0.45 }),
-    );
-    bar.position.set(0, 1.58, -0.1);
-    car.add(bar);
-  }
-  car.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (mesh.isMesh) mesh.castShadow = true;
-  });
-  return car;
-}
-
 function rigWheels(model: THREE.Object3D) {
   const wheels: Wheel[] = [];
   const wheelMeshes: THREE.Mesh[] = [];
@@ -1663,9 +1625,8 @@ export function startPursuitGame(
     const playerEffects = new THREE.Group();
     playerRoot.add(playerVisual, playerEffects);
     world.add(playerRoot);
-    const initialPlayer = fallbackCar(0xf4d03f);
-    playerVisual.add(initialPlayer);
-    let playerWheels = rigWheels(initialPlayer);
+    playerVisual.visible = false;
+    let playerWheels: Wheel[] = [];
     const nitroOuterMaterial = new THREE.MeshBasicMaterial({
       color: 0x269cff,
       transparent: true,
@@ -1715,15 +1676,14 @@ export function startPursuitGame(
     for (let i = 0; i < 5; i++) {
       const root = new THREE.Group();
       const visual = new THREE.Group();
-      const car = fallbackCar(0xe9eef3, true);
-      visual.add(car);
       root.add(visual);
       const lights = addLightBar(root);
+      root.visible = false;
       world.add(root);
       cops.push({
         root,
         visual,
-        wheels: rigWheels(car),
+        wheels: [],
         progress: -24 - i * 12,
         lane: copFormation[i],
         phase: i * 2.1,
@@ -1745,11 +1705,21 @@ export function startPursuitGame(
       }
     };
     let loaded = 0;
+    let playerAssetReady = false;
+    let policeAssetReady = false;
     const assetLoaded = () => {
       runWhenHostActive(() => {
         loaded++;
         if (loaded >= 2 && statusRef.current) {
           statusRef.current.textContent = "READY TO RUN";
+        }
+      });
+    };
+    const assetLoadFailed = () => {
+      runWhenHostActive(() => {
+        playButton.disabled = true;
+        if (statusRef.current) {
+          statusRef.current.textContent = "VEHICLE LOAD FAILED - RELOAD";
         }
       });
     };
@@ -1764,29 +1734,33 @@ export function startPursuitGame(
           car.position.y = 0.02;
           playerVisual.add(car);
           playerWheels = rigWheels(car);
+          playerAssetReady = true;
+          playerVisual.visible = true;
           assetLoaded();
         });
       },
       undefined,
-      assetLoaded,
+      assetLoadFailed,
     );
     loader.load(
       "./models/police-car.glb",
       (gltf) => {
         runWhenHostActive(() => {
-          cops.forEach((cop) => {
+          cops.forEach((cop, index) => {
             cop.visual.clear();
             const car = gltf.scene.clone(true);
             car.scale.setScalar(1.25);
             car.position.y = 0.03;
             cop.visual.add(car);
             cop.wheels = rigWheels(car);
+            cop.root.visible = index < currentLevel().cops;
           });
+          policeAssetReady = true;
           assetLoaded();
         });
       },
       undefined,
-      assetLoaded,
+      assetLoadFailed,
     );
 
     const particles: Particle[] = [];
@@ -2826,6 +2800,7 @@ export function startPursuitGame(
       const startX = roadCenter(0, levelIndex);
       playerRoot.position.set(startX, 0.03, 0);
       playerRoot.rotation.y = roadAngle(0, levelIndex);
+      playerVisual.visible = playerAssetReady;
       setTrackPosition(camera.position, -12, 0, 6.4, levelIndex);
       setTrackPosition(smoothedLook, 12, 0, 1.05, levelIndex);
       particles.forEach((particle) => {
@@ -2852,7 +2827,7 @@ export function startPursuitGame(
         cop.stun = 0;
         cop.impactLean = 0;
         cop.visual.rotation.z = 0;
-        cop.root.visible = i < currentLevel().cops;
+        cop.root.visible = policeAssetReady && i < currentLevel().cops;
       });
     };
     const beginLevel = (nextLevel: number) => {
