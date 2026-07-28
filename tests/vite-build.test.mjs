@@ -78,6 +78,8 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /nitroVisualStrength/);
   assert.match(game, /nitroOuterMaterial/);
   assert.match(game, /targetCameraFov/);
+  assert.match(game, /NITRO_EXHAUST_Z = -2\.55/);
+  assert.match(game, /rotation\.x = -Math\.PI \/ 2/);
   assert.match(game, /headingOffset/);
   assert.match(game, /maximumHeading/);
   assert.match(game, /counterSteering/);

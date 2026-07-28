@@ -90,6 +90,7 @@ const ENGINE_DOWNSHIFT_LOCKOUT = 0.78;
 const PLAYER_STEER_RESPONSE = 16.5;
 const PLAYER_HIGH_SPEED_STEER_RESPONSE = 11.8;
 const PLAYER_TIRE_GRIP = 12.5;
+const NITRO_EXHAUST_Z = -2.55;
 
 function roadCenter(p: number, levelIndex: number) {
   const level = LEVELS[levelIndex];
@@ -1688,10 +1689,10 @@ export function startPursuitGame(
         new THREE.ConeGeometry(0.11, 1.08, mobileRendering ? 6 : 9),
         nitroCoreMaterial,
       );
-      outer.position.set(exhaustX, 0.43, 2.55);
-      core.position.set(exhaustX, 0.43, 2.4);
-      outer.rotation.x = Math.PI / 2;
-      core.rotation.x = Math.PI / 2;
+      outer.position.set(exhaustX, 0.43, NITRO_EXHAUST_Z);
+      core.position.set(exhaustX, 0.43, NITRO_EXHAUST_Z + 0.15);
+      outer.rotation.x = -Math.PI / 2;
+      core.rotation.x = -Math.PI / 2;
       outer.visible = false;
       core.visible = false;
       playerEffects.add(outer, core);
