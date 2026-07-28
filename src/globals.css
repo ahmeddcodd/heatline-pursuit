@@ -982,6 +982,288 @@ button {
   }
 }
 
+/* Mobile HUD zones: every group owns a fixed region so controls never
+   collide with status information, notches, or gesture areas. */
+@media (max-width: 800px), (pointer: coarse) {
+  .game-hud {
+    overflow: hidden;
+  }
+
+  .top-bar {
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    left: calc(env(safe-area-inset-left, 0px) + 8px);
+    min-width: 0;
+  }
+
+  .speed-card,
+  .mission-card,
+  .sound-button {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .level-chip,
+  .mission-card .hud-kicker {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .danger-label {
+    gap: 10px;
+  }
+
+  .danger-label span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-controls {
+    z-index: 2;
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    max-width: calc(
+      100% - env(safe-area-inset-left, 0px) -
+        env(safe-area-inset-right, 0px) - 24px
+    );
+  }
+
+  .steer-control,
+  .nitro-control,
+  .nitro-button {
+    flex: none;
+  }
+
+  .start-screen {
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-top: calc(env(safe-area-inset-top, 0px) + clamp(34px, 8vh, 70px));
+    padding-right: calc(env(safe-area-inset-right, 0px) + 20px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+    padding-left: calc(env(safe-area-inset-left, 0px) + 20px);
+  }
+
+  .brand-lockup,
+  .play-button,
+  .asset-status {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 620px) and (orientation: portrait) {
+  .top-bar {
+    grid-template:
+      "speed sound" 58px
+      "mission mission" minmax(50px, auto) /
+      minmax(0, 1fr) auto;
+    gap: 6px 8px;
+  }
+
+  .speed-card {
+    grid-area: speed;
+    width: min(112px, 100%);
+    height: 58px;
+    padding: 7px 9px;
+  }
+
+  .sound-button {
+    grid-area: sound;
+    width: 50px;
+    min-width: 50px;
+    height: 58px;
+    padding: 8px 5px;
+  }
+
+  .mission-card {
+    grid-area: mission;
+    width: 100%;
+    min-height: 50px;
+    padding: 5px 8px 7px;
+  }
+
+  .mission-card strong {
+    margin: 1px 0 4px;
+    line-height: 1;
+  }
+
+  .danger-meter {
+    top: calc(env(safe-area-inset-top, 0px) + 136px);
+    width: calc(
+      100% - env(safe-area-inset-left, 0px) -
+        env(safe-area-inset-right, 0px) - 20px
+    );
+  }
+
+  .mobile-controls {
+    gap: 8px;
+  }
+
+  .start-screen {
+    align-items: flex-start;
+  }
+
+  .brand-lockup h1 {
+    max-width: 100%;
+    font-size: clamp(52px, 17vw, 88px);
+  }
+
+  .brand-lockup > p {
+    margin: 20px 0 14px;
+  }
+
+  .play-button {
+    width: min(285px, calc(100vw - 40px));
+  }
+}
+
+@media (max-width: 380px) and (orientation: portrait) {
+  .hud-kicker,
+  .level-chip {
+    letter-spacing: 0.09em;
+  }
+
+  .speed-card {
+    width: 94px;
+  }
+
+  .danger-label {
+    gap: 6px;
+    font-size: 7px;
+    letter-spacing: 0.08em;
+  }
+
+  .steer-control {
+    width: clamp(112px, 37vw, 126px);
+    height: 64px;
+    padding-inline: 10px;
+  }
+
+  .steer-knob {
+    width: 49px;
+    height: 49px;
+  }
+
+  .nitro-control {
+    width: 84px;
+  }
+
+  .nitro-button {
+    width: 80px;
+    height: 80px;
+    padding: 13px 9px 11px;
+  }
+
+  .nitro-button i {
+    width: 52px;
+  }
+}
+
+@media (max-height: 420px) and (orientation: landscape) {
+  .top-bar {
+    top: calc(env(safe-area-inset-top, 0px) + 5px);
+    right: calc(env(safe-area-inset-right, 0px) + 7px);
+    left: calc(env(safe-area-inset-left, 0px) + 7px);
+    gap: 6px;
+  }
+
+  .speed-card,
+  .sound-button {
+    height: 48px;
+  }
+
+  .speed-card {
+    min-width: 82px;
+    padding: 5px 8px;
+  }
+
+  .speed-card strong {
+    font-size: 25px;
+  }
+
+  .sound-button {
+    width: 46px;
+    min-width: 46px;
+    padding: 6px 4px;
+  }
+
+  .mission-card {
+    height: 48px;
+    padding: 3px 8px 5px;
+  }
+
+  .mission-card strong {
+    margin: 0 0 3px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .danger-meter {
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    width: min(320px, calc(100% - 170px));
+  }
+
+  .mobile-controls {
+    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 7px);
+    left: calc(env(safe-area-inset-left, 0px) + 8px);
+  }
+
+  .steer-control {
+    width: 126px;
+    height: 58px;
+  }
+
+  .steer-knob {
+    width: 46px;
+    height: 46px;
+  }
+
+  .nitro-control {
+    width: 76px;
+  }
+
+  .nitro-button {
+    width: 72px;
+    height: 72px;
+    padding: 11px 8px 9px;
+  }
+
+  .nitro-button::before {
+    inset: -5px;
+  }
+
+  .nitro-button span::before {
+    font-size: 16px;
+  }
+
+  .nitro-button i {
+    width: 48px;
+  }
+
+  .start-tip,
+  .mission-pills {
+    display: none;
+  }
+
+  .start-screen {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  }
+
+  .brand-lockup h1 {
+    font-size: clamp(48px, 12vh, 62px);
+  }
+
+  .brand-lockup > p {
+    margin: 12px 0 10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -125,6 +125,13 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.doesNotMatch(game, /copEngineGain|copSirenGain/);
   assert.match(styles, /max-width: 620px[^}]+orientation: portrait/s);
   assert.match(styles, /safe-area-inset-(?:top|right|bottom|left)/);
+  assert.match(styles, /"speed sound" 58px/);
+  assert.match(styles, /"mission mission" minmax\(50px, auto\)/);
+  assert.match(styles, /max-width: 380px[^}]+orientation: portrait/s);
+  assert.match(styles, /max-height: 420px[^}]+orientation: landscape/s);
+  assert.match(styles, /\.game-hud \{\s+overflow: hidden;/);
+  assert.match(styles, /\.start-screen \{[^}]+overflow-y: auto;/s);
+  assert.match(styles, /env\(safe-area-inset-bottom, 0px\) \+ 12px/);
   assert.match(youtubePlayables, /isAudioEnabled\(\)/);
   assert.match(youtubePlayables, /onAudioEnabledChange/);
   assert.match(youtubePlayables, /onPause/);
