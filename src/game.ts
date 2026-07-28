@@ -15,6 +15,7 @@ type Wheel = {
 type Cop = {
   root: THREE.Group;
   visual: THREE.Group;
+  lightbar: THREE.Group;
   wheels: Wheel[];
   progress: number;
   lane: number;
@@ -26,6 +27,8 @@ type Cop = {
   impactLean: number;
   red: THREE.Mesh;
   blue: THREE.Mesh;
+  redGlow: THREE.Mesh;
+  blueGlow: THREE.Mesh;
 };
 type Obstacle = {
   root: THREE.Object3D;
@@ -1720,22 +1723,63 @@ export function startPursuitGame(
     }
 
     const cops: Cop[] = [];
-    const lightMaterial = (color: number) =>
-      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 5 });
-    const addLightBar = (root: THREE.Group) => {
-      const red = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.28), lightMaterial(0xff294b));
-      const blue = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.28), lightMaterial(0x248fff));
-      red.position.set(-0.32, 1.65, -0.34);
-      blue.position.set(0.32, 1.65, -0.34);
-      root.add(red, blue);
-      return { red, blue };
+    const policeLightCapGeometry = new THREE.BoxGeometry(0.34, 0.045, 0.265);
+    const policeLightGlowGeometry = new THREE.BoxGeometry(0.41, 0.07, 0.33);
+    const policeLightMaterial = (color: number) => {
+      const material = new THREE.MeshBasicMaterial({ color });
+      material.toneMapped = false;
+      return material;
+    };
+    const policeGlowMaterial = (color: number) => {
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      material.toneMapped = false;
+      return material;
+    };
+    const addLightBar = () => {
+      const lightbar = new THREE.Group();
+      // The GLB's static roof lenses occupy x ±0.122–0.470,
+      // y 1.436–1.558 and z -0.642–-0.370 after model scaling.
+      lightbar.position.set(0, 1.575, -0.506);
+      const red = new THREE.Mesh(
+        policeLightCapGeometry,
+        policeLightMaterial(0xff294b),
+      );
+      const blue = new THREE.Mesh(
+        policeLightCapGeometry,
+        policeLightMaterial(0x248fff),
+      );
+      const redGlow = new THREE.Mesh(
+        policeLightGlowGeometry,
+        policeGlowMaterial(0xff294b),
+      );
+      const blueGlow = new THREE.Mesh(
+        policeLightGlowGeometry,
+        policeGlowMaterial(0x248fff),
+      );
+      red.position.x = 0.296;
+      blue.position.x = -0.296;
+      redGlow.position.set(0.296, 0.016, 0);
+      blueGlow.position.set(-0.296, 0.016, 0);
+      red.renderOrder = 5;
+      blue.renderOrder = 5;
+      redGlow.renderOrder = 6;
+      blueGlow.renderOrder = 6;
+      lightbar.add(red, blue, redGlow, blueGlow);
+      return { lightbar, red, blue, redGlow, blueGlow };
     };
     const copFormation = [-3.5, 3.5, 0, -6.5, 6.5];
     for (let i = 0; i < 5; i++) {
       const root = new THREE.Group();
       const visual = new THREE.Group();
       root.add(visual);
-      const lights = addLightBar(root);
+      const lights = addLightBar();
+      visual.add(lights.lightbar);
       root.visible = false;
       world.add(root);
       cops.push({
@@ -1892,7 +1936,7 @@ export function startPursuitGame(
             const car = gltf.scene.clone(true);
             car.scale.setScalar(1.25);
             car.position.y = 0.03;
-            cop.visual.add(car);
+            cop.visual.add(car, cop.lightbar);
             cop.wheels = rigWheels(car);
             makeObjectUnlit(car);
             cop.root.visible = index < currentLevel().cops;
@@ -3518,11 +3562,19 @@ export function startPursuitGame(
           });
           const flash = Math.sin(time * 8 + cop.phase) > 0;
           (cop.red.material as THREE.MeshBasicMaterial).color.setHex(
-            flash ? 0xff294b : 0x5c1628,
+            flash ? 0xff4663 : 0x68162b,
           );
           (cop.blue.material as THREE.MeshBasicMaterial).color.setHex(
-            flash ? 0x143a69 : 0x248fff,
+            flash ? 0x143660 : 0x42a5ff,
           );
+          (cop.redGlow.material as THREE.MeshBasicMaterial).opacity = flash
+            ? 0.58
+            : 0.055;
+          (cop.blueGlow.material as THREE.MeshBasicMaterial).opacity = flash
+            ? 0.055
+            : 0.58;
+          cop.redGlow.scale.setScalar(flash ? 1.08 : 0.96);
+          cop.blueGlow.scale.setScalar(flash ? 0.96 : 1.08);
           const distance = progress - cop.progress;
           const lateralGap = Math.abs(cop.lane - lane);
           if (distance < 10.5 && distance > -2 && lateralGap < 5.8) {

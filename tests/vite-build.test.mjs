@@ -108,6 +108,12 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
     /new THREE\.(?:Ambient|Hemisphere|Directional|Point|Spot|RectArea)Light/,
   );
   assert.doesNotMatch(game, /castShadow = true|receiveShadow = true/);
+  assert.match(game, /lightbar\.position\.set\(0, 1\.575, -0\.506\)/);
+  assert.match(game, /red\.position\.x = 0\.296/);
+  assert.match(game, /blue\.position\.x = -0\.296/);
+  assert.match(game, /cop\.visual\.add\(car, cop\.lightbar\)/);
+  assert.match(game, /redGlow\.material as THREE\.MeshBasicMaterial/);
+  assert.match(game, /blueGlow\.material as THREE\.MeshBasicMaterial/);
   assert.match(game, /const movementHeading/);
   assert.match(game, /const corneringPush/);
   assert.match(game, /scheduleChordStab/);
