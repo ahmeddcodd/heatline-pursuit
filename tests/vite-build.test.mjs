@@ -90,6 +90,13 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /corneringRoll/);
   assert.match(game, /PLAYER_STEER_RESPONSE = 16\.5/);
   assert.match(game, /PLAYER_TIRE_GRIP = 12\.5/);
+  assert.match(game, /MOBILE_PIXEL_RATIO_CAP = 1\.1/);
+  assert.match(game, /MOBILE_MIN_RENDER_SCALE = 0\.8/);
+  assert.match(game, /adaptivePixelRatioScale/);
+  assert.match(game, /updateMobileSceneVisibility/);
+  assert.match(game, /renderer\.shadowMap\.autoUpdate = !mobileRendering/);
+  assert.match(game, /mobileFrameIndex % 2 === 0/);
+  assert.match(game, /DETAILED_BUILDING_COUNT = mobileRendering \? 112 : 168/);
   assert.match(game, /const movementHeading/);
   assert.match(game, /const corneringPush/);
   assert.match(game, /scheduleChordStab/);

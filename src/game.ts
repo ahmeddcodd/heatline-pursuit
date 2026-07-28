@@ -372,13 +372,26 @@ export function startPursuitGame(
     const mobileRendering =
       coarsePointer ||
       Math.min(window.innerWidth, window.innerHeight) < 600;
+    const MOBILE_PIXEL_RATIO_CAP = 1.1;
+    const MOBILE_MIN_RENDER_SCALE = 0.8;
+    const MOBILE_FORWARD_DRAW_DISTANCE = 205;
+    const MOBILE_REAR_DRAW_DISTANCE = 52;
     const camera = new THREE.PerspectiveCamera(56, 1, 0.1, 650);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio, mobileRendering ? 1.25 : 1.6),
-    );
+    let adaptivePixelRatioScale = 1;
+    const applyRenderPixelRatio = () => {
+      const cap = mobileRendering ? MOBILE_PIXEL_RATIO_CAP : 1.6;
+      renderer.setPixelRatio(
+        Math.min(window.devicePixelRatio, cap) * adaptivePixelRatioScale,
+      );
+    };
+    applyRenderPixelRatio();
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = mobileRendering
+      ? THREE.PCFShadowMap
+      : THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = !mobileRendering;
+    renderer.shadowMap.needsUpdate = true;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -478,7 +491,7 @@ export function startPursuitGame(
     asphaltTexture.wrapT = THREE.RepeatWrapping;
     asphaltTexture.repeat.set(2.2, 1);
     asphaltTexture.anisotropy = Math.min(
-      8,
+      mobileRendering ? 4 : 8,
       renderer.capabilities.getMaxAnisotropy(),
     );
     const makeSurfaceTexture = (
@@ -737,7 +750,7 @@ export function startPursuitGame(
           );
           rail.position.set(side * 13.45, 0.16, 0);
           rail.rotation.x = Math.PI / 2;
-          rail.castShadow = true;
+          rail.castShadow = !mobileRendering;
           road.add(rail);
         }
       }
@@ -919,8 +932,11 @@ export function startPursuitGame(
       offset: number;
     }> = [];
     const buildingHeights = [9.8, 13.6, 18.4, 24.5, 11.8, 21.2, 16.1];
-    for (let i = 0; i < 168; i++) {
-      const p = 38 + i * 9.85;
+    const DETAILED_BUILDING_COUNT = mobileRendering ? 112 : 168;
+    const detailedBuildingSpacing =
+      (MAX_TRACK_LENGTH - 76) / Math.max(1, DETAILED_BUILDING_COUNT - 1);
+    for (let i = 0; i < DETAILED_BUILDING_COUNT; i++) {
+      const p = 38 + i * detailedBuildingSpacing;
       const h = buildingHeights[(i * 3 + Math.floor(i / 5)) % buildingHeights.length];
       const width = 7 + (i % 4) * 1.25;
       const depth = 7.2 + ((i + 1) % 3) * 1.2;
@@ -939,7 +955,7 @@ export function startPursuitGame(
         bodyMaterial,
       );
       body.position.y = h / 2;
-      body.castShadow = true;
+      body.castShadow = !mobileRendering;
       body.receiveShadow = true;
       building.add(body);
 
@@ -958,7 +974,7 @@ export function startPursuitGame(
         trimMaterial,
       );
       roofCap.position.y = h + 0.14;
-      roofCap.castShadow = true;
+      roofCap.castShadow = !mobileRendering;
       building.add(roofCap);
 
       if (i % 3 === 0) {
@@ -967,7 +983,7 @@ export function startPursuitGame(
           bodyMaterial,
         );
         upper.position.set(0, h + 0.86, 0);
-        upper.castShadow = true;
+        upper.castShadow = !mobileRendering;
         const roof = new THREE.Mesh(
           new THREE.ConeGeometry(Math.min(width, depth) * 0.36, 1.55, 4),
           new THREE.MeshStandardMaterial({
@@ -977,7 +993,7 @@ export function startPursuitGame(
         );
         roof.position.y = h + 2.35;
         roof.rotation.y = Math.PI / 4;
-        roof.castShadow = true;
+        roof.castShadow = !mobileRendering;
         building.add(upper, roof);
       } else {
         const utility = new THREE.Mesh(
@@ -1043,7 +1059,7 @@ export function startPursuitGame(
       }
       frames.instanceMatrix.needsUpdate = true;
       glass.instanceMatrix.needsUpdate = true;
-      frames.castShadow = true;
+      frames.castShadow = !mobileRendering;
       glass.castShadow = false;
       building.add(frames, glass);
 
@@ -1091,7 +1107,7 @@ export function startPursuitGame(
       buildings.push({ mesh: building, progress: p, side, offset });
     }
 
-    const BACKGROUND_BUILDING_COUNT = 136;
+    const BACKGROUND_BUILDING_COUNT = mobileRendering ? 82 : 136;
     const backgroundBuildingData: Array<{
       progress: number;
       side: number;
@@ -1115,8 +1131,8 @@ export function startPursuitGame(
       new THREE.MeshStandardMaterial({ color: 0xf4dfbd, roughness: 0.76 }),
       BACKGROUND_BUILDING_COUNT,
     );
-    const BACKGROUND_WINDOW_COLUMNS = 5;
-    const BACKGROUND_WINDOW_ROWS = 7;
+    const BACKGROUND_WINDOW_COLUMNS = mobileRendering ? 4 : 5;
+    const BACKGROUND_WINDOW_ROWS = mobileRendering ? 5 : 7;
     const BACKGROUND_WINDOWS_PER_BUILDING =
       BACKGROUND_WINDOW_COLUMNS * BACKGROUND_WINDOW_ROWS;
     const backgroundWindowFrames = new THREE.InstancedMesh(
@@ -1144,7 +1160,11 @@ export function startPursuitGame(
         new THREE.Color(buildingColors[(i * 5 + 2) % buildingColors.length]),
       );
       backgroundBuildingData.push({
-        progress: 30 + i * 12.25,
+        progress:
+          30 +
+          i *
+            ((MAX_TRACK_LENGTH - 42) /
+              Math.max(1, BACKGROUND_BUILDING_COUNT - 1)),
         side: i % 2 === 0 ? -1 : 1,
         offset: 40 + (i % 3) * 8.5,
         width: 8.5 + (i % 4) * 1.45,
@@ -1153,9 +1173,9 @@ export function startPursuitGame(
       });
     }
     backgroundTowers.instanceColor!.needsUpdate = true;
-    backgroundTowers.castShadow = true;
+    backgroundTowers.castShadow = !mobileRendering;
     backgroundTowers.receiveShadow = true;
-    backgroundRoofs.castShadow = true;
+    backgroundRoofs.castShadow = !mobileRendering;
     world.add(
       backgroundTowers,
       backgroundRoofs,
@@ -1163,7 +1183,7 @@ export function startPursuitGame(
       backgroundWindows,
     );
 
-    const GRASS_PATCH_COUNT = 300;
+    const GRASS_PATCH_COUNT = mobileRendering ? 180 : 300;
     const grassPatchGeometry = new THREE.CircleGeometry(2.8, 7);
     grassPatchGeometry.rotateX(-Math.PI / 2);
     const grassPatches = new THREE.InstancedMesh(
@@ -1187,10 +1207,10 @@ export function startPursuitGame(
       );
     }
     grassPatches.instanceColor!.needsUpdate = true;
-    grassPatches.receiveShadow = true;
+    grassPatches.receiveShadow = !mobileRendering;
     world.add(grassPatches);
 
-    const GRASS_COUNT = 620;
+    const GRASS_COUNT = mobileRendering ? 360 : 620;
     const grassGeometry = new THREE.BufferGeometry();
     grassGeometry.setAttribute(
       "position",
@@ -1213,10 +1233,10 @@ export function startPursuitGame(
       }),
       GRASS_COUNT,
     );
-    grass.receiveShadow = true;
+    grass.receiveShadow = !mobileRendering;
     world.add(grass);
 
-    const TREE_COUNT = 92;
+    const TREE_COUNT = mobileRendering ? 62 : 92;
     const treeTrunks = new THREE.InstancedMesh(
       new THREE.CylinderGeometry(0.28, 0.48, 2.8, 7),
       new THREE.MeshStandardMaterial({ color: 0x704b35, roughness: 1 }),
@@ -1227,8 +1247,8 @@ export function startPursuitGame(
       new THREE.MeshStandardMaterial({ color: 0x3f8b5c, roughness: 0.95 }),
       TREE_COUNT,
     );
-    treeTrunks.castShadow = true;
-    treeCrowns.castShadow = true;
+    treeTrunks.castShadow = !mobileRendering;
+    treeCrowns.castShadow = !mobileRendering;
     const crownColors = [0x3f8b5c, 0x4f9b58, 0x2f7860, 0x669f4c];
     for (let i = 0; i < TREE_COUNT; i++) {
       treeCrowns.setColorAt(i, new THREE.Color(crownColors[i % crownColors.length]));
@@ -1241,16 +1261,21 @@ export function startPursuitGame(
       roughness: 0.9,
       flatShading: false,
     });
-    const cloudGeometry = new THREE.SphereGeometry(2.2, 18, 12);
+    const cloudGeometry = new THREE.SphereGeometry(
+      2.2,
+      mobileRendering ? 14 : 18,
+      mobileRendering ? 9 : 12,
+    );
     const clouds: Array<{
       root: THREE.Group;
       progress: number;
       baseX: number;
       phase: number;
     }> = [];
-    for (let i = 0; i < 19; i++) {
+    const CLOUD_COUNT = mobileRendering ? 12 : 19;
+    for (let i = 0; i < CLOUD_COUNT; i++) {
       const root = new THREE.Group();
-      const pieceCount = 4 + (i % 3);
+      const pieceCount = mobileRendering ? 3 + (i % 2) : 4 + (i % 3);
       for (let piece = 0; piece < pieceCount; piece++) {
         const puff = new THREE.Mesh(cloudGeometry, cloudMaterial);
         puff.position.set(
@@ -1312,7 +1337,7 @@ export function startPursuitGame(
       arch.add(left, right, beam, beaconA, beaconB);
       arch.traverse((o) => {
         const mesh = o as THREE.Mesh;
-        if (mesh.isMesh) mesh.castShadow = true;
+        if (mesh.isMesh) mesh.castShadow = !mobileRendering;
       });
       arch.position.set(
         roadCenter(progressOnTrack, levelIndex),
@@ -2589,8 +2614,10 @@ export function startPursuitGame(
       backgroundWindows.instanceMatrix.needsUpdate = true;
 
       const patchDummy = new THREE.Object3D();
+      const patchSpacing =
+        (MAX_TRACK_LENGTH - 8) / Math.max(1, GRASS_PATCH_COUNT - 1);
       for (let i = 0; i < GRASS_PATCH_COUNT; i++) {
-        const p = 16 + i * 5.55;
+        const p = 16 + i * patchSpacing;
         const visible = p < level.length + 24;
         const side = i % 2 === 0 ? -1 : 1;
         const frame = roadFrame(p, levelIndex);
@@ -2610,8 +2637,10 @@ export function startPursuitGame(
       grassPatches.instanceMatrix.needsUpdate = true;
 
       const grassDummy = new THREE.Object3D();
+      const grassSpacing =
+        (MAX_TRACK_LENGTH - 4) / Math.max(1, GRASS_COUNT - 1);
       for (let i = 0; i < GRASS_COUNT; i++) {
-        const p = 14 + i * 2.7;
+        const p = 14 + i * grassSpacing;
         const visible = p < level.length + 18;
         const side = i % 2 === 0 ? -1 : 1;
         const frame = roadFrame(p, levelIndex);
@@ -2632,8 +2661,10 @@ export function startPursuitGame(
 
       const trunkDummy = new THREE.Object3D();
       const crownDummy = new THREE.Object3D();
+      const treeSpacing =
+        (MAX_TRACK_LENGTH - 9) / Math.max(1, TREE_COUNT - 1);
       for (let i = 0; i < TREE_COUNT; i++) {
-        const p = 34 + i * 17.7;
+        const p = 34 + i * treeSpacing;
         const visible = p < level.length + 25;
         const side = i % 2 === 0 ? -1 : 1;
         const frame = roadFrame(p, levelIndex);
@@ -2704,6 +2735,40 @@ export function startPursuitGame(
         );
         obstacle.root.rotation.set(0, roadAngle(obstacle.progress, levelIndex), 0);
       });
+    };
+
+    // On phones, keep the dense, textured city but only submit the part that
+    // can contribute to the current camera view. This removes hundreds of
+    // off-screen building/window draw calls without changing gameplay data.
+    const updateMobileSceneVisibility = () => {
+      if (!mobileRendering) return;
+      const level = currentLevel();
+      const inMobileDrawRange = (itemProgress: number, forwardPadding = 0) =>
+        itemProgress >= progress - MOBILE_REAR_DRAW_DISTANCE &&
+        itemProgress <=
+          progress + MOBILE_FORWARD_DRAW_DISTANCE + forwardPadding;
+
+      roadPieces.forEach(({ progress: p, shoulder, road, line }) => {
+        const visible =
+          p <= level.length + 24 && inMobileDrawRange(p, 28);
+        shoulder.visible = visible;
+        road.visible = visible;
+        if (line) line.visible = visible;
+      });
+      buildings.forEach(({ mesh, progress: p }) => {
+        mesh.visible = p < level.length + 10 && inMobileDrawRange(p, 18);
+      });
+      clouds.forEach(({ root, progress: p }) => {
+        root.visible =
+          p < level.length + 150 &&
+          p >= progress - 130 &&
+          p <= progress + 330;
+      });
+      trackArches.forEach(({ root, progress: p }) => {
+        root.visible =
+          p < level.length - 45 && inMobileDrawRange(p, 60);
+      });
+      directionSign.visible = inMobileDrawRange(120, 12);
     };
 
     const driveableLaneLimit = () =>
@@ -2947,9 +3012,7 @@ export function startPursuitGame(
       camera.fov = camera.aspect < 0.72 ? 64 : camera.aspect < 1.15 ? 59 : 56;
       camera.updateProjectionMatrix();
       renderer.setSize(mount.clientWidth, mount.clientHeight);
-      renderer.setPixelRatio(
-        Math.min(window.devicePixelRatio, mobileRendering ? 1.25 : 1.6),
-      );
+      applyRenderPixelRatio();
     };
     window.addEventListener("resize", resize);
     resize();
@@ -2963,13 +3026,43 @@ export function startPursuitGame(
     let raf = 0;
     let firstFrameReported = false;
     let gameReadyReported = false;
+    let mobileFrameIndex = 0;
+    let mobileQualityElapsed = 0;
+    let mobileQualityFrameTime = 0;
+    let mobileQualityFrameCount = 0;
     const animate = () => {
       if (hostPaused) {
         raf = 0;
         return;
       }
       raf = requestAnimationFrame(animate);
-      const dt = Math.min(clock.getDelta(), 0.035);
+      const rawDt = Math.min(clock.getDelta(), 0.1);
+      const dt = Math.min(rawDt, 0.035);
+      if (mobileRendering && gamePhase === "playing") {
+        mobileQualityElapsed += rawDt;
+        mobileQualityFrameTime += rawDt;
+        mobileQualityFrameCount++;
+        if (mobileQualityElapsed >= 1.5) {
+          const averageFrameTime =
+            mobileQualityFrameTime / Math.max(1, mobileQualityFrameCount);
+          const nextScale =
+            averageFrameTime > 0.0215
+              ? Math.max(
+                  MOBILE_MIN_RENDER_SCALE,
+                  adaptivePixelRatioScale - 0.1,
+                )
+              : averageFrameTime < 0.0172
+                ? Math.min(1, adaptivePixelRatioScale + 0.05)
+                : adaptivePixelRatioScale;
+          if (Math.abs(nextScale - adaptivePixelRatioScale) > 0.001) {
+            adaptivePixelRatioScale = nextScale;
+            applyRenderPixelRatio();
+          }
+          mobileQualityElapsed = 0;
+          mobileQualityFrameTime = 0;
+          mobileQualityFrameCount = 0;
+        }
+      }
       time += dt;
       cooldown = Math.max(0, cooldown - dt);
       let boostingThisFrame = false;
@@ -3516,6 +3609,18 @@ export function startPursuitGame(
       camera.lookAt(smoothedLook);
       sun.position.set(playerX - 35, 55, -progress + 20);
       sun.target.position.set(playerX, 0, -progress - 10);
+
+      if (mobileRendering) {
+        mobileFrameIndex++;
+        if (mobileFrameIndex === 1 || mobileFrameIndex % 6 === 0) {
+          updateMobileSceneVisibility();
+        }
+        // Cars keep crisp real-time contact shadows while the expensive
+        // directional shadow atlas is refreshed at half the render rate.
+        if (mobileFrameIndex % 2 === 0) {
+          renderer.shadowMap.needsUpdate = true;
+        }
+      }
 
       clouds.forEach((cloud) => {
         if (!cloud.root.visible) return;
