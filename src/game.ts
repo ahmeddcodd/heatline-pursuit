@@ -41,6 +41,11 @@ type Particle = {
   velocity: THREE.Vector3;
   life: number;
 };
+type TrackBodyContact = {
+  longitudinalOverlap: number;
+  lateralOverlap: number;
+  lateralDirection: number;
+};
 
 type LevelConfig = {
   name: string;
@@ -71,6 +76,8 @@ const PLAYER_HALF_WIDTH = 1.02;
 const PLAYER_HALF_LENGTH = 2.08;
 const COP_HALF_WIDTH = 1.08;
 const COP_HALF_LENGTH = 2.12;
+const POLICE_BUMPER_CONTACT_GAP =
+  PLAYER_HALF_LENGTH + COP_HALF_LENGTH - 0.18;
 const ENGINE_GEAR_SPEEDS = [0, 10.5, 20.5, 29.5, 37.5, 44, 50] as const;
 const ENGINE_UPSHIFT_LOCKOUT = 1.05;
 const ENGINE_DOWNSHIFT_LOCKOUT = 0.78;
@@ -155,6 +162,25 @@ function laneAtProgress(
     toLane,
     THREE.MathUtils.clamp((targetProgress - fromProgress) / distance, 0, 1),
   );
+}
+
+function trackBodyContact(
+  playerProgress: number,
+  playerLane: number,
+  copProgress: number,
+  copLane: number,
+): TrackBodyContact | null {
+  const longitudinalOverlap =
+    PLAYER_HALF_LENGTH + COP_HALF_LENGTH -
+    Math.abs(playerProgress - copProgress);
+  const lateralOverlap =
+    PLAYER_HALF_WIDTH + COP_HALF_WIDTH - Math.abs(playerLane - copLane);
+  if (longitudinalOverlap <= 0 || lateralOverlap <= 0) return null;
+  return {
+    longitudinalOverlap,
+    lateralOverlap,
+    lateralDirection: playerLane >= copLane ? 1 : -1,
+  };
 }
 
 function dampAngle(current: number, target: number, smoothing: number, dt: number) {
@@ -1735,6 +1761,20 @@ export function startPursuitGame(
       particles.push({ mesh, velocity: new THREE.Vector3(), life: 0 });
     }
     let particleIndex = 0;
+    const impactFlashMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffbd54,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const impactFlash = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.62, mobileRendering ? 0 : 1),
+      impactFlashMaterial,
+    );
+    impactFlash.visible = false;
+    world.add(impactFlash);
+    let impactFlashLife = 0;
     const emit = (position: THREE.Vector3, count: number, power: number, party = false) => {
       for (let i = 0; i < count; i++) {
         const p = particles[particleIndex++ % particles.length];
@@ -1749,6 +1789,14 @@ export function startPursuitGame(
         );
         p.life = party ? 2.4 + Math.random() : 0.55 + Math.random() * 0.45;
       }
+    };
+    const showVehicleImpact = (position: THREE.Vector3) => {
+      impactFlash.position.copy(position);
+      impactFlash.scale.setScalar(0.35);
+      impactFlashMaterial.opacity = 0.9;
+      impactFlash.visible = true;
+      impactFlashLife = 0.24;
+      emit(position, mobileRendering ? 12 : 18, 7.2);
     };
 
     const input = { left: false, right: false, gas: false, brake: false, boost: false, touch: 0 };
@@ -2133,6 +2181,42 @@ export function startPursuitGame(
       pop.connect(popFilter).connect(popGain).connect(engineBus);
       pop.start(when + 0.018);
       pop.stop(when + 0.15);
+    };
+    const playVehicleImpact = () => {
+      if (
+        !audio ||
+        !engineBus ||
+        !noiseBuffer ||
+        muted ||
+        hostPaused ||
+        !hostAudioEnabled
+      ) {
+        return;
+      }
+      const when = audio.currentTime;
+      const thump = audio.createOscillator();
+      const thumpGain = audio.createGain();
+      thump.type = "triangle";
+      thump.frequency.setValueAtTime(96, when);
+      thump.frequency.exponentialRampToValueAtTime(38, when + 0.14);
+      thumpGain.gain.setValueAtTime(0.14, when);
+      thumpGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.18);
+      thump.connect(thumpGain).connect(engineBus);
+      thump.start(when);
+      thump.stop(when + 0.2);
+
+      const scrape = audio.createBufferSource();
+      const scrapeFilter = audio.createBiquadFilter();
+      const scrapeGain = audio.createGain();
+      scrape.buffer = noiseBuffer;
+      scrapeFilter.type = "bandpass";
+      scrapeFilter.frequency.value = 720;
+      scrapeFilter.Q.value = 0.72;
+      scrapeGain.gain.setValueAtTime(0.085, when);
+      scrapeGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.16);
+      scrape.connect(scrapeFilter).connect(scrapeGain).connect(engineBus);
+      scrape.start(when);
+      scrape.stop(when + 0.18);
     };
     const setupAudio = () => {
       if (audio) {
@@ -2621,6 +2705,9 @@ export function startPursuitGame(
         particle.life = 0;
         particle.mesh.visible = false;
       });
+      impactFlashLife = 0;
+      impactFlash.visible = false;
+      impactFlashMaterial.opacity = 0;
       obstacles.forEach((o, i) => {
         o.hit = false;
         o.root.visible = i < currentLevel().hazards;
@@ -2957,9 +3044,9 @@ export function startPursuitGame(
               ? 6 * grip
               : distance > 12
                 ? 2.8 * grip
-                : distance < 6.2
-                  ? -2.5
-                  : 0.6 * grip;
+                : distance > POLICE_BUMPER_CONTACT_GAP + 0.65
+                  ? 1.1 * grip
+                  : -0.8;
           cop.stun = Math.max(0, cop.stun - dt);
           const baseCopSpeed = THREE.MathUtils.clamp(
             Math.max(speed, 4.5) + catchup + index * 0.25,
@@ -2967,7 +3054,10 @@ export function startPursuitGame(
             43,
           );
           const copSpeed = baseCopSpeed * (cop.stun > 0 ? 0.32 : 1);
-          const chaseGap = 6.2 + (index % 2) * 1.7 + Math.floor(index / 2) * 2.7;
+          const chaseGap =
+            POLICE_BUMPER_CONTACT_GAP +
+            (index % 2) * 1.65 +
+            Math.floor(index / 2) * 2.7;
           const previousCopProgress = cop.progress;
           const previousCopLane = cop.lane;
           cop.progress = Math.min(
@@ -3077,6 +3167,65 @@ export function startPursuitGame(
         for (let index = 0; index < activeCopCount; index++) {
           const cop = cops[index];
           const grip = currentLevel().policeGrip;
+          const bodyContact = trackBodyContact(
+            progress,
+            lane,
+            cop.progress,
+            cop.lane,
+          );
+          if (bodyContact) {
+            if (
+              bodyContact.lateralOverlap < bodyContact.longitudinalOverlap
+            ) {
+              const separation = bodyContact.lateralOverlap * 0.52 + 0.025;
+              const laneLimit = driveableLaneLimit();
+              lane = THREE.MathUtils.clamp(
+                lane + bodyContact.lateralDirection * separation * 0.56,
+                -laneLimit,
+                laneLimit,
+              );
+              cop.lane = THREE.MathUtils.clamp(
+                cop.lane - bodyContact.lateralDirection * separation * 0.44,
+                -laneLimit,
+                laneLimit,
+              );
+            } else {
+              cop.progress = Math.min(
+                cop.progress,
+                progress - PLAYER_HALF_LENGTH - COP_HALF_LENGTH + 0.04,
+              );
+            }
+
+            if (cooldown <= 0) {
+              const centeredContact = Math.abs(lane - cop.lane) < 0.1;
+              const impactDirection = centeredContact
+                ? steer === 0
+                  ? index % 2 === 0
+                    ? 1
+                    : -1
+                  : Math.sign(steer)
+                : bodyContact.lateralDirection;
+              lateral +=
+                impactDirection *
+                (3.8 +
+                  Math.min(bodyContact.longitudinalOverlap, 0.6) * 2.2);
+              headingOffset += impactDirection * 0.045;
+              speed *= 0.9;
+              cop.stun = Math.max(cop.stun, 0.16);
+              cop.impactLean = -impactDirection * 0.17;
+              shake = Math.max(shake, 0.72);
+              cooldown = 0.48;
+              setTrackPosition(
+                effectPosition,
+                (progress + cop.progress) * 0.5,
+                (lane + cop.lane) * 0.5,
+                0.82,
+                levelIndex,
+              );
+              showVehicleImpact(effectPosition);
+              playVehicleImpact();
+            }
+          }
           setTrackPosition(
             cop.root.position,
             cop.progress,
@@ -3120,12 +3269,6 @@ export function startPursuitGame(
             pressure +=
               (1 - Math.max(distance, 0) / 11.5) *
               (1 - lateralGap / 6.2);
-            if (distance < 7.2 && lateralGap < 2.2 && cooldown <= 0) {
-              lateral += (lane > cop.lane ? 1 : -1) * 4.5;
-              speed *= 0.92;
-              shake = 0.32;
-              cooldown = 0.55;
-            }
           }
         }
         bust = THREE.MathUtils.clamp(
@@ -3240,6 +3383,14 @@ export function startPursuitGame(
         p.mesh.scale.multiplyScalar(Math.max(0.92, 1 - dt * 0.7));
         if (p.life <= 0) p.mesh.visible = false;
       });
+      if (impactFlashLife > 0) {
+        impactFlashLife = Math.max(0, impactFlashLife - dt);
+        const flashRatio = impactFlashLife / 0.24;
+        impactFlashMaterial.opacity = flashRatio * 0.88;
+        impactFlash.scale.setScalar(0.35 + (1 - flashRatio) * 1.45);
+        impactFlash.rotation.y += dt * 9;
+        if (impactFlashLife <= 0) impactFlash.visible = false;
+      }
       if (audio && musicBus) {
         const musicLevel =
           gamePhase === "playing"
