@@ -2913,7 +2913,7 @@ export function startPursuitGame(
     window.addEventListener("keydown", keyDown, { passive: false });
     window.addEventListener("keyup", keyUp);
 
-    const bindHold = (id: string, field: "gas" | "brake" | "boost") => {
+    const bindHold = (id: string, field: "boost") => {
       const el = document.getElementById(id);
       const down = (e: PointerEvent) => {
         if (hostPaused) return;
@@ -2933,8 +2933,6 @@ export function startPursuitGame(
         el?.removeEventListener("pointercancel", up);
       };
     };
-    const unbindGas = bindHold("gas-control", "gas");
-    const unbindBrake = bindHold("brake-control", "brake");
     const unbindBoost = bindHold("boost-control", "boost");
     const steerPad = document.getElementById("steer-control");
     const updateSteer = (e: PointerEvent) => {
@@ -3788,8 +3786,6 @@ export function startPursuitGame(
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("resize", resize);
-      unbindGas();
-      unbindBrake();
       unbindBoost();
       steerPad?.removeEventListener("pointerdown", steerDown);
       steerPad?.removeEventListener("pointermove", steerMove);

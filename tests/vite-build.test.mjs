@@ -128,6 +128,11 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   });
   assert.match(html, /START ESCAPE/);
   assert.match(html, /10 ESCALATING LEVELS/);
+  assert.doesNotMatch(html, /gas-control|brake-control/);
+  assert.match(html, /aria-label="Activate nitro boost"/);
+  assert.match(styles, /@keyframes nitro-button-pulse/);
+  assert.match(styles, /@keyframes nitro-ring-spin/);
+  assert.doesNotMatch(game, /unbindGas|unbindBrake/);
   await access(new URL("dist/models/player-car.glb", root));
   await access(new URL("dist/models/police-car.glb", root));
 });

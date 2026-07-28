@@ -619,65 +619,81 @@ button {
     border-radius: 50%;
   }
 
-  .pedal-stack {
+  .nitro-control {
     pointer-events: auto;
     display: grid;
-    width: 145px;
-    gap: 7px;
-  }
-
-  .pedal-row {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  .pedal,
-  .nitro-button {
-    border: 1px solid rgb(255 255 255 / 28%);
-    box-shadow: 0 5px 14px rgb(0 0 0 / 24%);
-    touch-action: none;
-  }
-
-  .pedal {
-    width: 63px;
-    height: 63px;
-    color: white;
-    border-radius: 50%;
-    background: rgb(12 24 34 / 74%);
-    font-size: 9px;
-    font-weight: 950;
-    letter-spacing: 0.08em;
-  }
-
-  .pedal:active {
-    transform: scale(0.94);
-  }
-
-  .pedal.gas {
-    color: var(--ink);
-    border-color: var(--yellow);
-    background: var(--yellow);
+    width: 108px;
+    place-items: center;
   }
 
   .nitro-button {
-    display: flex;
+    position: relative;
+    isolation: isolate;
+    display: grid;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 7px 9px;
+    justify-items: center;
+    width: 94px;
+    height: 94px;
+    padding: 17px 12px 14px;
     color: white;
-    background: rgb(12 24 34 / 78%);
-    font-size: 8px;
+    border: 2px solid rgb(108 225 255 / 76%);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 35%, rgb(56 170 255 / 60%), transparent 42%),
+      linear-gradient(160deg, rgb(16 54 81 / 96%), rgb(6 20 34 / 96%));
+    box-shadow:
+      0 0 0 5px rgb(40 178 255 / 10%),
+      0 0 24px rgb(44 181 255 / 38%),
+      inset 0 0 22px rgb(61 203 255 / 22%),
+      0 8px 18px rgb(0 0 0 / 34%);
+    font-size: 10px;
     font-weight: 950;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.14em;
+    touch-action: none;
+    animation: nitro-button-pulse 1.25s ease-in-out infinite;
+    transition: filter 0.1s ease, transform 0.1s ease;
+  }
+
+  .nitro-button::before {
+    position: absolute;
+    z-index: -1;
+    inset: -8px;
+    border: 2px solid transparent;
+    border-top-color: #78edff;
+    border-right-color: rgb(49 145 255 / 72%);
+    border-radius: 50%;
+    content: "";
+    filter: drop-shadow(0 0 5px #45cbff);
+    animation: nitro-ring-spin 2.1s linear infinite;
+  }
+
+  .nitro-button span {
+    display: grid;
+    gap: 1px;
+    place-items: center;
+    text-shadow: 0 0 8px #48d5ff;
+  }
+
+  .nitro-button span::before {
+    color: #dffcff;
+    content: "\26A1";
+    font-size: 20px;
+    line-height: 0.8;
+    text-shadow: 0 0 11px #66e8ff;
+  }
+
+  .nitro-button:active {
+    filter: brightness(1.3);
+    transform: scale(0.91);
   }
 
   .nitro-button i {
-    flex: 1;
-    height: 5px;
+    width: 62px;
+    height: 6px;
     overflow: hidden;
+    border-radius: 6px;
     background: #344653;
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 50%);
   }
 
   .nitro-button b {
@@ -686,6 +702,31 @@ button {
     height: 100%;
     background: var(--cyan);
     box-shadow: 0 0 9px var(--cyan);
+    transition: width 0.12s linear;
+  }
+
+  @keyframes nitro-button-pulse {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 5px rgb(40 178 255 / 10%),
+        0 0 20px rgb(44 181 255 / 30%),
+        inset 0 0 20px rgb(61 203 255 / 18%),
+        0 8px 18px rgb(0 0 0 / 34%);
+    }
+    50% {
+      box-shadow:
+        0 0 0 9px rgb(40 178 255 / 17%),
+        0 0 34px rgb(71 211 255 / 58%),
+        inset 0 0 28px rgb(61 203 255 / 34%),
+        0 8px 18px rgb(0 0 0 / 34%);
+    }
+  }
+
+  @keyframes nitro-ring-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .desktop-hint {
@@ -731,13 +772,13 @@ button {
     height: 68px;
   }
 
-  .pedal-stack {
-    width: clamp(120px, 38vw, 132px);
+  .nitro-control {
+    width: clamp(88px, 27vw, 102px);
   }
 
-  .pedal {
-    width: 58px;
-    height: 58px;
+  .nitro-button {
+    width: 88px;
+    height: 88px;
   }
 }
 
@@ -808,9 +849,10 @@ button {
     top: max(170px, calc(env(safe-area-inset-top) + 160px));
   }
 
-  .pedal {
-    width: 54px;
-    height: 54px;
+  .nitro-button {
+    width: 82px;
+    height: 82px;
+    padding: 14px 10px 12px;
   }
 }
 
