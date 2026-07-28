@@ -286,25 +286,8 @@ button {
   width: min(560px, 92vw);
 }
 
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--yellow);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.24em;
-}
-
-.eyebrow::before {
-  content: "";
-  width: 30px;
-  height: 3px;
-  background: var(--yellow);
-}
-
 .brand-lockup h1 {
-  margin: 10px 0 0;
+  margin: 0;
   color: white;
   font-size: clamp(62px, 10vw, 132px);
   font-weight: 950;
@@ -522,8 +505,16 @@ button {
   line-height: 1.45;
 }
 
+/*
+ * The overlay scrolls, not the card. A scroll container on .result-card would
+ * compute overflow-x to auto as well and clip .result-stamp, which is anchored
+ * above the card's top edge. Auto margins centre the card instead of
+ * align-items, so an overflowing card stays reachable from the top.
+ */
 .result-screen {
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow-y: auto;
   text-align: center;
   background: rgb(6 15 24 / 72%);
   backdrop-filter: blur(8px);
@@ -532,8 +523,7 @@ button {
 .result-card {
   position: relative;
   width: min(480px, 92vw);
-  max-height: calc(100dvh - 48px);
-  overflow-y: auto;
+  margin: auto;
   padding: 48px clamp(24px, 5vw, 58px) 34px;
   color: var(--ink);
   border-top: 9px solid var(--yellow);
@@ -550,13 +540,17 @@ button {
   position: absolute;
   top: -24px;
   left: 50%;
+  max-width: calc(100% - 16px);
   padding: 8px 20px;
+  overflow: hidden;
   color: white;
   background: var(--ink);
   transform: translateX(-50%) skewX(-8deg);
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.15em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .result-card h2 {
@@ -906,7 +900,8 @@ button {
   }
 
   .result-screen {
-    padding: 24px 14px;
+    /* Top padding clears the 24px .result-stamp overhang. */
+    padding: 44px 14px 24px;
   }
 
   .result-card {

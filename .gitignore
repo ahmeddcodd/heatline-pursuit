@@ -33,6 +33,9 @@ yarn-error.log*
 tsconfig.tsbuildinfo
 /dist/
 
+# packaged builds (regenerate with npm run build)
+*.zip
+
 # local source copies (optimized deployment copies live in public/models)
 /CAR Model by Ignition Labs - 5zUWP5UsLg-.glb
 /Police Car by Quaternius - BwwnUrWGmV.glb
