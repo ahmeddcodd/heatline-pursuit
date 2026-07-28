@@ -38,9 +38,15 @@ type Obstacle = {
 };
 type Particle = {
   mesh: THREE.Mesh;
+  material: THREE.MeshBasicMaterial;
   velocity: THREE.Vector3;
   life: number;
+  maxLife: number;
+  gravity: number;
+  drag: number;
+  baseOpacity: number;
 };
+type ParticleStyle = "spark" | "dust" | "nitro" | "party";
 type TrackBodyContact = {
   longitudinalOverlap: number;
   lateralOverlap: number;
@@ -1652,11 +1658,45 @@ export function startPursuitGame(
 
     const playerRoot = new THREE.Group();
     const playerVisual = new THREE.Group();
-    playerRoot.add(playerVisual);
+    const playerEffects = new THREE.Group();
+    playerRoot.add(playerVisual, playerEffects);
     world.add(playerRoot);
     const initialPlayer = fallbackCar(0xf4d03f);
     playerVisual.add(initialPlayer);
     let playerWheels = rigWheels(initialPlayer);
+    const nitroOuterMaterial = new THREE.MeshBasicMaterial({
+      color: 0x269cff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const nitroCoreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xdffcff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const nitroFlames: THREE.Mesh[] = [];
+    for (const exhaustX of [-0.48, 0.48]) {
+      const outer = new THREE.Mesh(
+        new THREE.ConeGeometry(0.22, 1.65, mobileRendering ? 7 : 10),
+        nitroOuterMaterial,
+      );
+      const core = new THREE.Mesh(
+        new THREE.ConeGeometry(0.11, 1.08, mobileRendering ? 6 : 9),
+        nitroCoreMaterial,
+      );
+      outer.position.set(exhaustX, 0.43, 2.55);
+      core.position.set(exhaustX, 0.43, 2.4);
+      outer.rotation.x = Math.PI / 2;
+      core.rotation.x = Math.PI / 2;
+      outer.visible = false;
+      core.visible = false;
+      playerEffects.add(outer, core);
+      nitroFlames.push(outer, core);
+    }
 
     const cops: Cop[] = [];
     const lightMaterial = (color: number) =>
@@ -1749,16 +1789,30 @@ export function startPursuitGame(
 
     const particles: Particle[] = [];
     const particleGeo = new THREE.BoxGeometry(0.13, 0.13, 0.13);
-    const particleColors = [0xffd85a, 0xff6b35, 0xe8edf0, 0x74d38a, 0x55b7ff];
     const particlePoolSize = mobileRendering ? 64 : 96;
     for (let i = 0; i < particlePoolSize; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffc05a,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
       const mesh = new THREE.Mesh(
         particleGeo,
-        new THREE.MeshBasicMaterial({ color: particleColors[i % particleColors.length] }),
+        material,
       );
       mesh.visible = false;
       world.add(mesh);
-      particles.push({ mesh, velocity: new THREE.Vector3(), life: 0 });
+      particles.push({
+        mesh,
+        material,
+        velocity: new THREE.Vector3(),
+        life: 0,
+        maxLife: 0,
+        gravity: 0,
+        drag: 0,
+        baseOpacity: 0,
+      });
     }
     let particleIndex = 0;
     const impactFlashMaterial = new THREE.MeshBasicMaterial({
@@ -1775,19 +1829,77 @@ export function startPursuitGame(
     impactFlash.visible = false;
     world.add(impactFlash);
     let impactFlashLife = 0;
-    const emit = (position: THREE.Vector3, count: number, power: number, party = false) => {
+    const sparkColors = [0xffd36a, 0xff8a3d, 0xfff1c2];
+    const dustColors = [0xd2c9b8, 0xa8aaa3, 0xe5dece];
+    const nitroColors = [0xdffcff, 0x67ddff, 0x2f72ff];
+    const partyColors = [0xffd85a, 0xff6b35, 0xe8edf0, 0x74d38a, 0x55b7ff];
+    const emit = (
+      position: THREE.Vector3,
+      count: number,
+      power: number,
+      party = false,
+      style: ParticleStyle = party ? "party" : "spark",
+      direction = 0,
+    ) => {
+      const colors =
+        style === "dust"
+          ? dustColors
+          : style === "nitro"
+            ? nitroColors
+            : style === "party"
+              ? partyColors
+              : sparkColors;
+      const behindX = Math.sin(direction);
+      const behindZ = Math.cos(direction);
       for (let i = 0; i < count; i++) {
         const p = particles[particleIndex++ % particles.length];
         p.mesh.visible = true;
         p.mesh.position.copy(position);
-        p.mesh.position.x += (Math.random() - 0.5) * 2;
-        p.mesh.scale.setScalar(party ? 1.8 : 1);
-        p.velocity.set(
-          (Math.random() - 0.5) * power,
-          Math.random() * power * (party ? 1.3 : 0.65),
-          (Math.random() - 0.5) * power,
-        );
-        p.life = party ? 2.4 + Math.random() : 0.55 + Math.random() * 0.45;
+        p.material.color.setHex(colors[(particleIndex + i) % colors.length]);
+        p.material.opacity = style === "dust" ? 0.46 : 0.92;
+        p.baseOpacity = p.material.opacity;
+        p.mesh.rotation.set(0, style === "nitro" ? direction : Math.random() * Math.PI, 0);
+        if (style === "nitro") {
+          const streakLength = 2.2 + Math.random() * 2.6;
+          p.mesh.position.x += (Math.random() - 0.5) * 1.35;
+          p.mesh.position.y += Math.random() * 0.5;
+          p.mesh.scale.set(0.3, 0.22, streakLength);
+          const trailSpeed = 3 + Math.random() * 5;
+          p.velocity.set(
+            behindX * trailSpeed + (Math.random() - 0.5) * 0.8,
+            (Math.random() - 0.5) * 0.3,
+            behindZ * trailSpeed + (Math.random() - 0.5) * 0.8,
+          );
+          p.life = 0.2 + Math.random() * 0.16;
+          p.gravity = 0;
+          p.drag = 1.2;
+        } else if (style === "dust") {
+          p.mesh.position.x += (Math.random() - 0.5) * 1.2;
+          p.mesh.scale.setScalar(1.4 + Math.random() * 1.2);
+          p.velocity.set(
+            (Math.random() - 0.5) * power * 0.55,
+            Math.random() * 0.75 + 0.12,
+            (Math.random() - 0.5) * power * 0.55,
+          );
+          p.life = 0.42 + Math.random() * 0.3;
+          p.gravity = 0.7;
+          p.drag = 2.8;
+        } else {
+          p.mesh.position.x += (Math.random() - 0.5) * 2;
+          p.mesh.scale.setScalar(style === "party" ? 1.8 : 1);
+          p.velocity.set(
+            (Math.random() - 0.5) * power,
+            Math.random() * power * (style === "party" ? 1.3 : 0.65),
+            (Math.random() - 0.5) * power,
+          );
+          p.life =
+            style === "party"
+              ? 2.4 + Math.random()
+              : 0.55 + Math.random() * 0.45;
+          p.gravity = 9;
+          p.drag = 0.7;
+        }
+        p.maxLife = p.life;
       }
     };
     const showVehicleImpact = (position: THREE.Vector3) => {
@@ -1810,6 +1922,8 @@ export function startPursuitGame(
     let steer = 0;
     let bust = 0;
     let nitro = 100;
+    let nitroVisualStrength = 0;
+    let nitroWasActive = false;
     let shake = 0;
     let cooldown = 0;
     let spin = 0;
@@ -2687,6 +2801,13 @@ export function startPursuitGame(
       steer = 0;
       bust = 0;
       nitro = 100;
+      nitroVisualStrength = 0;
+      nitroWasActive = false;
+      nitroOuterMaterial.opacity = 0;
+      nitroCoreMaterial.opacity = 0;
+      nitroFlames.forEach((flame) => {
+        flame.visible = false;
+      });
       shake = 0;
       cooldown = 0;
       spin = 0;
@@ -2868,6 +2989,7 @@ export function startPursuitGame(
       const dt = Math.min(clock.getDelta(), 0.035);
       time += dt;
       cooldown = Math.max(0, cooldown - dt);
+      let boostingThisFrame = false;
 
       if (gamePhase === "playing") {
         const previousProgress = progress;
@@ -2891,6 +3013,7 @@ export function startPursuitGame(
           dt,
         );
         const boosting = input.boost && nitro > 0.5 && speed > 8;
+        boostingThisFrame = boosting;
         const autoGas = coarsePointer && !input.brake;
         if (input.gas || autoGas) speed += (boosting ? 20 : 13.5) * dt;
         else speed -= 4.5 * dt;
@@ -2898,15 +3021,23 @@ export function startPursuitGame(
         speed = THREE.MathUtils.clamp(speed, 0, boosting ? 48 : 38);
         if (boosting) {
           nitro = Math.max(0, nitro - 22 * dt);
-          if (Math.random() < 0.65) {
+          if (!nitroWasActive || Math.random() < 0.82) {
             setTrackPosition(
               effectPosition,
-              progress - 2.4,
+              progress - 2.7,
               lane,
-              0.35,
+              0.42,
               levelIndex,
             );
-            emit(effectPosition, 1, 2.2);
+            emit(
+              effectPosition,
+              !nitroWasActive ? (mobileRendering ? 7 : 11) : mobileRendering ? 1 : 2,
+              3.5,
+              false,
+              "nitro",
+              playerYaw,
+            );
+            if (!nitroWasActive) shake = Math.max(shake, 0.18);
           }
         } else {
           nitro = Math.min(100, nitro + 5.5 * dt);
@@ -2966,7 +3097,7 @@ export function startPursuitGame(
               0.1,
               levelIndex,
             );
-            emit(effectPosition, 1, 1.2);
+            emit(effectPosition, 1, 1.2, false, "dust");
           }
         }
         progress += speed * Math.max(0.88, Math.cos(headingOffset)) * dt;
@@ -2990,7 +3121,7 @@ export function startPursuitGame(
             0.15,
             levelIndex,
           );
-          emit(effectPosition, 1, 1.6);
+          emit(effectPosition, 1, 1.6, false, "dust");
         }
 
         for (const obstacle of obstacles) {
@@ -3340,8 +3471,43 @@ export function startPursuitGame(
         11.5,
         dt,
       );
+      nitroVisualStrength = THREE.MathUtils.damp(
+        nitroVisualStrength,
+        boostingThisFrame ? 1 : 0,
+        boostingThisFrame ? 14 : 8,
+        dt,
+      );
+      nitroWasActive = boostingThisFrame;
+      const flamePulse = 0.94 + Math.sin(time * 42) * 0.08;
+      nitroOuterMaterial.opacity = nitroVisualStrength * 0.82;
+      nitroCoreMaterial.opacity = nitroVisualStrength * 0.96;
+      playerEffects.rotation.z = playerVisual.rotation.z;
+      nitroFlames.forEach((flame, index) => {
+        flame.visible = nitroVisualStrength > 0.025;
+        const coreFlame = index % 2 === 1;
+        flame.scale.set(
+          0.86 + nitroVisualStrength * 0.12,
+          (coreFlame ? 0.72 : 0.82) +
+            nitroVisualStrength * (coreFlame ? 0.72 : 1.05) * flamePulse,
+          0.86 + nitroVisualStrength * 0.12,
+        );
+      });
+      const baseCameraFov =
+        camera.aspect < 0.72 ? 64 : camera.aspect < 1.15 ? 59 : 56;
+      const targetCameraFov = baseCameraFov + nitroVisualStrength * 5.5;
+      const nextCameraFov = THREE.MathUtils.damp(
+        camera.fov,
+        targetCameraFov,
+        8.5,
+        dt,
+      );
+      if (Math.abs(nextCameraFov - camera.fov) > 0.004) {
+        camera.fov = nextCameraFov;
+        camera.updateProjectionMatrix();
+      }
       const ratio = speed / 38;
-      const cameraDistance = 11.5 + ratio * 2.5;
+      const cameraDistance =
+        11.5 + ratio * 2.5 + nitroVisualStrength * 1.6;
       setTrackPosition(
         camPosition,
         progress - cameraDistance,
@@ -3377,11 +3543,17 @@ export function startPursuitGame(
         if (p.life <= 0) return;
         p.life -= dt;
         p.mesh.position.addScaledVector(p.velocity, dt);
-        p.velocity.y -= 9 * dt;
+        p.velocity.multiplyScalar(Math.exp(-p.drag * dt));
+        p.velocity.y -= p.gravity * dt;
         p.mesh.rotation.x += dt * 6;
         p.mesh.rotation.z += dt * 4;
         p.mesh.scale.multiplyScalar(Math.max(0.92, 1 - dt * 0.7));
-        if (p.life <= 0) p.mesh.visible = false;
+        p.material.opacity =
+          p.baseOpacity * THREE.MathUtils.clamp(p.life / p.maxLife, 0, 1);
+        if (p.life <= 0) {
+          p.mesh.visible = false;
+          p.material.opacity = 0;
+        }
       });
       if (impactFlashLife > 0) {
         impactFlashLife = Math.max(0, impactFlashLife - dt);

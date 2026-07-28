@@ -74,6 +74,10 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /POLICE_BUMPER_CONTACT_GAP/);
   assert.match(game, /showVehicleImpact/);
   assert.match(game, /playVehicleImpact/);
+  assert.match(game, /type ParticleStyle = "spark" \| "dust" \| "nitro" \| "party"/);
+  assert.match(game, /nitroVisualStrength/);
+  assert.match(game, /nitroOuterMaterial/);
+  assert.match(game, /targetCameraFov/);
   assert.match(game, /headingOffset/);
   assert.match(game, /maximumHeading/);
   assert.match(game, /counterSteering/);
