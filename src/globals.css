@@ -393,9 +393,9 @@ button {
 }
 
 .asset-status {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 8px;
+  width: min(330px, 100%);
   margin-top: 19px;
   color: #8da1b1;
   font-size: 9px;
@@ -403,13 +403,98 @@ button {
   letter-spacing: 0.12em;
 }
 
+.asset-status-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-status-copy span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.asset-status-copy b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-status-copy strong {
+  flex: none;
+  color: white;
+  font-size: 10px;
+}
+
 .asset-status i {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 9px var(--green);
+  background: var(--yellow);
+  box-shadow: 0 0 9px var(--yellow);
   animation: status-pulse 1.1s ease infinite alternate;
+}
+
+.loading-track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 20%);
+  background: rgb(4 12 20 / 68%);
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 36%);
+  transform: skewX(-8deg);
+}
+
+.loading-track::after {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 18px,
+    rgb(255 255 255 / 13%) 18px 20px
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.loading-track > b {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--orange), var(--yellow), #fff3a4);
+  box-shadow: 0 0 16px rgb(255 214 64 / 72%);
+  transition: width 0.22s ease-out;
+}
+
+.asset-status.is-ready {
+  color: #bce9c9;
+}
+
+.asset-status.is-ready i {
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green);
+  animation: none;
+}
+
+.asset-status.is-ready .loading-track > b {
+  background: linear-gradient(90deg, #35c66c, #8cf0ad);
+  box-shadow: 0 0 16px rgb(53 198 108 / 72%);
+}
+
+.asset-status.has-error,
+.asset-status.has-error .asset-status-copy strong {
+  color: #ff9aa0;
+}
+
+.asset-status.has-error i,
+.asset-status.has-error .loading-track > b {
+  background: var(--red);
+  box-shadow: 0 0 12px rgb(255 60 75 / 68%);
+  animation: none;
 }
 
 .start-tip {

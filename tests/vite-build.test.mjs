@@ -90,13 +90,14 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /corneringRoll/);
   assert.match(game, /PLAYER_STEER_RESPONSE = 16\.5/);
   assert.match(game, /PLAYER_TIRE_GRIP = 12\.5/);
-  assert.match(game, /MOBILE_PIXEL_RATIO_CAP = 1\.1/);
-  assert.match(game, /MOBILE_MIN_RENDER_SCALE = 0\.8/);
-  assert.match(game, /adaptivePixelRatioScale/);
-  assert.match(game, /updateMobileSceneVisibility/);
-  assert.match(game, /renderer\.shadowMap\.autoUpdate = !mobileRendering/);
-  assert.match(game, /mobileFrameIndex % 2 === 0/);
-  assert.match(game, /DETAILED_BUILDING_COUNT = mobileRendering \? 112 : 168/);
+  assert.doesNotMatch(game, /adaptivePixelRatioScale/);
+  assert.doesNotMatch(game, /updateMobileSceneVisibility/);
+  assert.match(game, /renderer\.compileAsync\(scene, camera\)/);
+  assert.match(game, /renderer\.initTexture\(texture\)/);
+  assert.match(game, /new THREE\.WebGLRenderTarget\(16, 16/);
+  assert.match(game, /hiddenObjects: THREE\.Object3D\[\]/);
+  assert.match(game, /sceneReady && firstFrameReported/);
+  assert.match(game, /hostPaused \|\| !sceneReady/);
   assert.match(game, /const movementHeading/);
   assert.match(game, /const corneringPush/);
   assert.match(game, /scheduleChordStab/);
@@ -127,7 +128,7 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /playerVisual\.visible = false/);
   assert.match(game, /root\.visible = false/);
   assert.match(game, /policeAssetReady && i < currentLevel\(\)\.cops/);
-  assert.match(game, /VEHICLE LOAD FAILED/);
+  assert.match(game, /GAME LOAD FAILED/);
   const runtimeSources = [main, game, cloudSave, youtubePlayables].join("\n");
   const forbiddenPersistenceApis = [
     ["local", "Storage"].join(""),
@@ -144,6 +145,11 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(html, /10 ESCALATING LEVELS/);
   assert.doesNotMatch(html, /gas-control|brake-control/);
   assert.match(html, /aria-label="Activate nitro boost"/);
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /id="loading-fill"/);
+  assert.match(html, /id="loading-percent"/);
+  assert.match(styles, /\.loading-track/);
+  assert.match(styles, /\.asset-status\.is-ready/);
   assert.match(styles, /@keyframes nitro-button-pulse/);
   assert.match(styles, /@keyframes nitro-ring-spin/);
   assert.doesNotMatch(game, /unbindGas|unbindBrake/);

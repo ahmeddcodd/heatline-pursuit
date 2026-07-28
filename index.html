@@ -110,8 +110,22 @@
           <button class="play-button" id="play-button" type="button">
             <span>START ESCAPE</span><b>›</b>
           </button>
-          <div class="asset-status">
-            <i></i><span id="status-value">LOADING VEHICLES…</span>
+          <div class="asset-status" id="asset-status">
+            <div class="asset-status-copy">
+              <span><i></i><b id="status-value">BUILDING PURSUIT…</b></span>
+              <strong id="loading-percent">0%</strong>
+            </div>
+            <div
+              class="loading-track"
+              id="loading-track"
+              role="progressbar"
+              aria-label="Loading game scene"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <b id="loading-fill"></b>
+            </div>
           </div>
         </div>
         <div class="start-tip">
