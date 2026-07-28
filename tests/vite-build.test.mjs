@@ -81,6 +81,9 @@ test("ships a framework-clean Vite and TypeScript game", async () => {
   assert.match(game, /sportsEnginePrimary/);
   assert.match(game, /playGearShift/);
   assert.match(game, /engineRpm/);
+  assert.match(game, /smoothedEngineRpm/);
+  assert.match(game, /createPeriodicWave/);
+  assert.match(game, /shiftCooldown = 0\.62/);
   assert.doesNotMatch(game, /copEngineGain|copSirenGain/);
   assert.match(styles, /max-width: 620px[^}]+orientation: portrait/s);
   assert.match(styles, /safe-area-inset-(?:top|right|bottom|left)/);

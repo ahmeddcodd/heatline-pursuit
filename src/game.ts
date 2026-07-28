@@ -1776,8 +1776,10 @@ export function startPursuitGame(
     let engineGear = 1;
     let shiftCooldown = 0;
     let shiftDip = 0;
+    let smoothedEngineRpm = 1080;
     let musicTimer: ReturnType<typeof setInterval> | null = null;
     let noiseBuffer: AudioBuffer | null = null;
+    let exhaustNoiseBuffer: AudioBuffer | null = null;
     let nextMusicTime = 0;
     let musicStep = 0;
     let muted = initialCloudSave.playerMuted;
@@ -2175,6 +2177,18 @@ export function startPursuitGame(
         noise[i] = Math.random() * 2 - 1;
       }
 
+      exhaustNoiseBuffer = audio.createBuffer(
+        1,
+        Math.floor(audio.sampleRate * 1.4),
+        audio.sampleRate,
+      );
+      const exhaustNoise = exhaustNoiseBuffer.getChannelData(0);
+      let exhaustSample = 0;
+      for (let i = 0; i < exhaustNoise.length; i++) {
+        exhaustSample = exhaustSample * 0.965 + (Math.random() * 2 - 1) * 0.035;
+        exhaustNoise[i] = exhaustSample * 2.15;
+      }
+
       engineBus = audio.createGain();
       engineBus.gain.value = 0.72;
       const engineMix = audio.createGain();
@@ -2189,7 +2203,7 @@ export function startPursuitGame(
       const driveCurve = new Float32Array(384);
       for (let i = 0; i < driveCurve.length; i++) {
         const x = (i / (driveCurve.length - 1)) * 2 - 1;
-        driveCurve[i] = Math.tanh(x * 2.65);
+        driveCurve[i] = Math.tanh(x * 1.9);
       }
       engineDrive.curve = driveCurve;
       engineDrive.oversample = mobileRendering ? "none" : "2x";
@@ -2200,15 +2214,23 @@ export function startPursuitGame(
       sportsEngineSub = audio.createOscillator();
       sportsEngineFilter = audio.createBiquadFilter();
       sportsEngineGain = audio.createGain();
-      sportsEnginePrimary.type = "sawtooth";
+      const engineWaveReal = new Float32Array(8);
+      const engineWaveImag = new Float32Array([
+        0, 1, 0.46, 0.22, 0.12, 0.065, 0.035, 0.018,
+      ]);
+      sportsEnginePrimary.setPeriodicWave(
+        audio.createPeriodicWave(engineWaveReal, engineWaveImag, {
+          disableNormalization: false,
+        }),
+      );
       sportsEngineHarmonic.type = "triangle";
-      sportsEngineSub.type = "triangle";
+      sportsEngineSub.type = "sine";
       sportsEnginePrimary.frequency.value = 52;
       sportsEngineHarmonic.frequency.value = 104;
       sportsEngineSub.frequency.value = 26;
       sportsEngineFilter.type = "lowpass";
       sportsEngineFilter.frequency.value = 720;
-      sportsEngineFilter.Q.value = 1.1;
+      sportsEngineFilter.Q.value = 0.72;
       sportsEngineGain.gain.value = 0;
       sportsEnginePrimary.connect(primaryLevel).connect(engineMix);
       sportsEngineHarmonic.connect(harmonicLevel).connect(engineMix);
@@ -2226,11 +2248,11 @@ export function startPursuitGame(
       const exhaustSource = audio.createBufferSource();
       exhaustFilter = audio.createBiquadFilter();
       exhaustGain = audio.createGain();
-      exhaustSource.buffer = noiseBuffer;
+      exhaustSource.buffer = exhaustNoiseBuffer;
       exhaustSource.loop = true;
       exhaustFilter.type = "bandpass";
       exhaustFilter.frequency.value = 520;
-      exhaustFilter.Q.value = 0.85;
+      exhaustFilter.Q.value = 0.62;
       exhaustGain.gain.value = 0;
       exhaustSource
         .connect(exhaustFilter)
@@ -2582,6 +2604,7 @@ export function startPursuitGame(
       engineGear = 1;
       shiftCooldown = 0;
       shiftDip = 0;
+      smoothedEngineRpm = 1080;
       playerYaw = roadAngle(0, levelIndex);
       time = 0;
       const startX = roadCenter(0, levelIndex);
@@ -3235,15 +3258,15 @@ export function startPursuitGame(
           const canUpshift = engineGear < ENGINE_GEAR_SPEEDS.length - 1;
           const upshiftSpeed = ENGINE_GEAR_SPEEDS[engineGear];
           const downshiftSpeed =
-            ENGINE_GEAR_SPEEDS[Math.max(0, engineGear - 1)] - 1.5;
+            ENGINE_GEAR_SPEEDS[Math.max(0, engineGear - 1)] - 2.6;
           if (canUpshift && speed >= upshiftSpeed) {
             engineGear++;
-            shiftCooldown = 0.3;
+            shiftCooldown = 0.62;
             shiftDip = 1;
             playGearShift(true);
           } else if (engineGear > 1 && speed < downshiftSpeed) {
             engineGear--;
-            shiftCooldown = 0.26;
+            shiftCooldown = 0.5;
             shiftDip = 0.72;
             playGearShift(false);
           }
@@ -3257,11 +3280,20 @@ export function startPursuitGame(
           0,
           1,
         );
-        const engineRpm =
+        const targetEngineRpm =
           (speed < 0.6
-            ? 1080 + Math.sin(time * 8.5) * 42
+            ? 1080 + Math.sin(time * 4.2) * 26
             : 1450 + gearProgress * 6100 + throttle * 260) *
           (1 - shiftDip * 0.24);
+        smoothedEngineRpm = THREE.MathUtils.damp(
+          smoothedEngineRpm,
+          targetEngineRpm,
+          shiftDip > 0 ? 9.5 : 5.4,
+          dt,
+        );
+        const cruisingVariation =
+          Math.sin(time * 1.7) * 5 + Math.sin(time * 0.73) * 3;
+        const engineRpm = smoothedEngineRpm + cruisingVariation;
         const rpmRatio = THREE.MathUtils.clamp(
           (engineRpm - 950) / 6900,
           0,
@@ -3271,22 +3303,22 @@ export function startPursuitGame(
         sportsEnginePrimary.frequency.setTargetAtTime(
           engineFrequency,
           audio.currentTime,
-          0.035,
+          0.065,
         );
         sportsEngineHarmonic.frequency.setTargetAtTime(
           engineFrequency * 2.015,
           audio.currentTime,
-          0.03,
+          0.06,
         );
         sportsEngineSub.frequency.setTargetAtTime(
           engineFrequency * 0.5,
           audio.currentTime,
-          0.05,
+          0.075,
         );
         sportsEngineFilter.frequency.setTargetAtTime(
-          620 + rpmRatio * 2250 + throttle * 480,
+          600 + rpmRatio * 1720 + throttle * 360,
           audio.currentTime,
-          0.055,
+          0.085,
         );
         const nitroGrowl =
           gamePhase === "playing" && input.boost && nitro > 0.5 ? 0.014 : 0;
@@ -3308,10 +3340,10 @@ export function startPursuitGame(
         );
         exhaustGain.gain.setTargetAtTime(
           gamePhase === "playing"
-            ? 0.004 + rpmRatio * 0.009 + throttle * 0.02
+            ? 0.003 + rpmRatio * 0.007 + throttle * 0.015
             : 0.003,
           audio.currentTime,
-          0.08,
+          0.13,
         );
         engineBus.gain.setTargetAtTime(
           gamePhase === "playing" ? 0.74 : 0.58,
