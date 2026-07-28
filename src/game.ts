@@ -1750,6 +1750,8 @@ export function startPursuitGame(
     let progress = 0;
     let lane = 0;
     let lateral = 0;
+    let previousLateral = 0;
+    let headingOffset = 0;
     let speed = 0;
     let steer = 0;
     let bust = 0;
@@ -1791,7 +1793,7 @@ export function startPursuitGame(
       oscillator.frequency.setValueAtTime(152, when);
       oscillator.frequency.exponentialRampToValueAtTime(43, when + 0.12);
       gain.gain.setValueAtTime(0.0001, when);
-      gain.gain.exponentialRampToValueAtTime(0.22 * intensity, when + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.235 * intensity, when + 0.008);
       gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.19);
       oscillator.connect(gain).connect(musicBus);
       oscillator.start(when);
@@ -1833,7 +1835,7 @@ export function startPursuitGame(
       filter.frequency.setValueAtTime(170 + intensity * 260, when);
       filter.Q.value = 4.5;
       gain.gain.setValueAtTime(0.0001, when);
-      gain.gain.exponentialRampToValueAtTime(0.055 * intensity, when + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.062 * intensity, when + 0.012);
       gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
       oscillator.connect(filter).connect(gain).connect(musicBus);
       oscillator.start(when);
@@ -1854,11 +1856,89 @@ export function startPursuitGame(
       filter.frequency.value = 1450 + intensity * 900;
       filter.Q.value = 2.2;
       gain.gain.setValueAtTime(0.0001, when);
-      gain.gain.exponentialRampToValueAtTime(0.021 * intensity, when + 0.009);
+      gain.gain.exponentialRampToValueAtTime(0.019 * intensity, when + 0.009);
       gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.095);
       oscillator.connect(filter).connect(gain).connect(musicBus);
       oscillator.start(when);
       oscillator.stop(when + 0.11);
+    };
+    const scheduleTom = (
+      when: number,
+      frequency: number,
+      intensity: number,
+      pan: number,
+    ) => {
+      if (!audio || !musicBus) return;
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      const panner = audio.createStereoPanner();
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(frequency * 1.8, when);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency, when + 0.14);
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime(0.065 * intensity, when + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+      panner.pan.value = pan;
+      oscillator.connect(gain).connect(panner).connect(musicBus);
+      oscillator.start(when);
+      oscillator.stop(when + 0.24);
+    };
+    const scheduleChordStab = (
+      when: number,
+      rootFrequency: number,
+      intensity: number,
+      pan: number,
+    ) => {
+      if (!audio || !musicBus) return;
+      const filter = audio.createBiquadFilter();
+      const gain = audio.createGain();
+      const panner = audio.createStereoPanner();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(1150 + intensity * 720, when);
+      filter.Q.value = 1.35;
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime(0.018 * intensity, when + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.24);
+      panner.pan.value = pan;
+      filter.connect(gain).connect(panner).connect(musicBus);
+      [1, 1.1892, 1.4983].forEach((ratio, index) => {
+        const oscillator = audio!.createOscillator();
+        oscillator.type = index === 0 ? "sawtooth" : "triangle";
+        oscillator.frequency.setValueAtTime(rootFrequency * ratio, when);
+        oscillator.detune.value = (index - 1) * 4;
+        oscillator.connect(filter);
+        oscillator.start(when);
+        oscillator.stop(when + 0.26);
+      });
+    };
+    const scheduleTensionSweep = (
+      when: number,
+      frequency: number,
+      intensity: number,
+      duration: number,
+    ) => {
+      if (!audio || !musicBus) return;
+      const oscillator = audio.createOscillator();
+      const filter = audio.createBiquadFilter();
+      const gain = audio.createGain();
+      const panner = audio.createStereoPanner();
+      oscillator.type = "sawtooth";
+      oscillator.frequency.setValueAtTime(frequency, when);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        frequency * 1.5,
+        when + duration,
+      );
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(900, when);
+      filter.frequency.exponentialRampToValueAtTime(2400, when + duration);
+      filter.Q.value = 3.2;
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime(0.012 * intensity, when + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+      panner.pan.value = Math.sin(musicStep * 0.7) * 0.48;
+      oscillator.connect(filter).connect(gain).connect(panner).connect(musicBus);
+      oscillator.start(when);
+      oscillator.stop(when + duration + 0.02);
     };
     const scheduleMusic = () => {
       if (
@@ -1872,41 +1952,48 @@ export function startPursuitGame(
         return;
       }
       const sixteenth = 60 / 136 / 4;
-      const bassNotes = [
-        73.42, 73.42, 87.31, 73.42,
-        65.41, 65.41, 69.3, 73.42,
-        58.27, 58.27, 65.41, 69.3,
-        69.3, 65.41, 73.42, 82.41,
+      const bassRoots = [73.42, 65.41, 58.27, 55];
+      const bassRatios = [
+        1, 1, 1.1892, 1, 1, 0.8909, 1, 1.1892,
+        1, 1.4983, 1.1892, 1, 0.8909, 1, 1.1892, 1.3348,
       ];
-      const pulseNotes = [
-        293.66, 349.23, 440, 523.25,
-        349.23, 440, 587.33, 440,
-      ];
+      const pulseRatios = [4, 4.7568, 5.9932, 7.1272, 5.9932, 4.7568, 7.1272, 5.3394];
       if (nextMusicTime < audio.currentTime) {
         nextMusicTime = audio.currentTime + 0.035;
       }
       while (nextMusicTime < audio.currentTime + 0.18) {
         const step = musicStep % 16;
+        const phrase = Math.floor(musicStep / 16) % bassRoots.length;
+        const bassRoot = bassRoots[phrase];
         const intensity =
           gamePhase === "playing"
-            ? THREE.MathUtils.clamp(0.72 + speed / 105 + bust / 240, 0.72, 1.28)
-            : 0.5;
-        if ([0, 6, 8, 11].includes(step)) {
+            ? THREE.MathUtils.clamp(0.78 + speed / 110 + bust / 210, 0.78, 1.34)
+            : 0.56;
+        if ([0, 5, 8, 11].includes(step)) {
           scheduleKick(nextMusicTime, intensity);
         }
         if (step === 4 || step === 12) {
-          scheduleNoise(nextMusicTime, 0.16, 1450, 0.085 * intensity);
+          scheduleNoise(nextMusicTime, 0.18, 1500, 0.095 * intensity);
+          scheduleNoise(nextMusicTime, 0.1, 4200, 0.034 * intensity);
+        }
+        if (step === 3 || step === 14) {
+          scheduleTom(
+            nextMusicTime,
+            step === 3 ? bassRoot * 1.5 : bassRoot * 1.25,
+            intensity,
+            step === 3 ? -0.42 : 0.42,
+          );
         }
         scheduleNoise(
           nextMusicTime,
           step % 4 === 3 ? 0.075 : 0.035,
           6800,
-          (step % 2 === 0 ? 0.027 : 0.013) * intensity,
+          (step % 2 === 0 ? 0.03 : 0.014) * intensity,
         );
         if (step % 2 === 0 || step === 11) {
           scheduleBass(
             nextMusicTime,
-            bassNotes[step],
+            bassRoot * bassRatios[step],
             sixteenth * (step % 4 === 0 ? 1.8 : 0.88),
             intensity,
           );
@@ -1914,8 +2001,24 @@ export function startPursuitGame(
         if (step % 2 === 1) {
           schedulePulse(
             nextMusicTime,
-            pulseNotes[Math.floor(step / 2) % pulseNotes.length],
+            bassRoot * pulseRatios[Math.floor(step / 2) % pulseRatios.length],
             intensity,
+          );
+        }
+        if ([2, 7, 10, 15].includes(step)) {
+          scheduleChordStab(
+            nextMusicTime,
+            bassRoot * 2,
+            intensity,
+            step % 4 < 2 ? -0.28 : 0.28,
+          );
+        }
+        if (step === 12 && gamePhase === "playing") {
+          scheduleTensionSweep(
+            nextMusicTime,
+            bassRoot * 2,
+            intensity,
+            sixteenth * 3.8,
           );
         }
         nextMusicTime += sixteenth;
@@ -1958,7 +2061,7 @@ export function startPursuitGame(
 
       const shouldOutput = hostAudioEnabled && !hostPaused && !muted;
       master.gain.cancelScheduledValues(audio.currentTime);
-      master.gain.setValueAtTime(shouldOutput ? 0.21 : 0, audio.currentTime);
+      master.gain.setValueAtTime(shouldOutput ? 0.28 : 0, audio.currentTime);
 
       if (!hostAudioEnabled || hostPaused || muted) {
         stopMusicScheduler();
@@ -1981,25 +2084,34 @@ export function startPursuitGame(
       master = audio.createGain();
       master.gain.value = 0;
       const compressor = audio.createDynamicsCompressor();
-      compressor.threshold.value = -18;
-      compressor.knee.value = 12;
-      compressor.ratio.value = 4;
-      compressor.attack.value = 0.012;
-      compressor.release.value = 0.22;
+      compressor.threshold.value = -24;
+      compressor.knee.value = 10;
+      compressor.ratio.value = 5;
+      compressor.attack.value = 0.006;
+      compressor.release.value = 0.16;
       master.connect(compressor).connect(audio.destination);
 
       musicBus = audio.createGain();
-      musicBus.gain.value = 0.88;
+      musicBus.gain.value = 1;
+      const lowShelf = audio.createBiquadFilter();
+      const presence = audio.createBiquadFilter();
+      lowShelf.type = "lowshelf";
+      lowShelf.frequency.value = 165;
+      lowShelf.gain.value = 2.4;
+      presence.type = "peaking";
+      presence.frequency.value = 2800;
+      presence.Q.value = 0.7;
+      presence.gain.value = 1.6;
       const delay = audio.createDelay(0.5);
       const feedback = audio.createGain();
       const delayWet = audio.createGain();
       delay.delayTime.value = 0.22;
-      feedback.gain.value = 0.24;
-      delayWet.gain.value = 0.12;
-      musicBus.connect(master);
+      feedback.gain.value = 0.2;
+      delayWet.gain.value = 0.16;
+      musicBus.connect(lowShelf).connect(presence).connect(master);
       musicBus.connect(delay);
       delay.connect(feedback).connect(delay);
-      delay.connect(delayWet).connect(master);
+      delay.connect(delayWet).connect(presence);
 
       noiseBuffer = audio.createBuffer(
         1,
@@ -2342,6 +2454,8 @@ export function startPursuitGame(
       progress = 0;
       lane = 0;
       lateral = 0;
+      previousLateral = 0;
+      headingOffset = 0;
       speed = 0;
       steer = 0;
       bust = 0;
@@ -2525,8 +2639,17 @@ export function startPursuitGame(
         const previousProgress = progress;
         const previousLane = lane;
         const keys = (input.left ? -1 : 0) + (input.right ? 1 : 0);
-        const targetSteer = Math.abs(input.touch) > 0.03 ? input.touch : keys;
-        steer = THREE.MathUtils.damp(steer, targetSteer, 6.4, dt);
+        const rawSteer = Math.abs(input.touch) > 0.03 ? input.touch : keys;
+        const targetSteer =
+          Math.sign(rawSteer) * Math.pow(Math.abs(rawSteer), 1.18);
+        const speedRatio = THREE.MathUtils.clamp(speed / 38, 0, 1);
+        const steeringResponse = THREE.MathUtils.lerp(7.4, 4.8, speedRatio);
+        steer = THREE.MathUtils.damp(
+          steer,
+          targetSteer,
+          rawSteer === 0 ? steeringResponse + 2.2 : steeringResponse,
+          dt,
+        );
         const boosting = input.boost && nitro > 0.5 && speed > 8;
         const autoGas = coarsePointer && !input.brake;
         if (input.gas || autoGas) speed += (boosting ? 20 : 13.5) * dt;
@@ -2548,8 +2671,23 @@ export function startPursuitGame(
         } else {
           nitro = Math.min(100, nitro + 5.5 * dt);
         }
-        const targetLateralSpeed = steer * (3.4 + speed * 0.15);
-        lateral = THREE.MathUtils.damp(lateral, targetLateralSpeed, 5.1, dt);
+        const steeringAuthority = THREE.MathUtils.smoothstep(speed, 0.8, 7);
+        const maximumHeading = THREE.MathUtils.lerp(0.31, 0.185, speedRatio);
+        const targetHeading = steer * maximumHeading * steeringAuthority;
+        headingOffset = dampAngle(
+          headingOffset,
+          targetHeading,
+          THREE.MathUtils.lerp(6.2, 4.1, speedRatio),
+          dt,
+        );
+        const targetLateralSpeed =
+          Math.sin(headingOffset) * speed * THREE.MathUtils.lerp(0.82, 0.94, speedRatio);
+        lateral = THREE.MathUtils.damp(
+          lateral,
+          targetLateralSpeed,
+          boosting ? 3.8 : 4.9,
+          dt,
+        );
         const upcomingTurn = Math.atan2(
           Math.sin(
             roadAngle(progress + 3, levelIndex) -
@@ -2560,12 +2698,18 @@ export function startPursuitGame(
               roadAngle(progress, levelIndex),
           ),
         );
-        lateral += upcomingTurn * speed * speed * (0.022 + levelIndex * 0.0016) * dt;
+        lateral +=
+          upcomingTurn *
+          speed *
+          speed *
+          (0.009 + levelIndex * 0.0007) *
+          dt;
         const laneLimit = driveableLaneLimit();
         const requestedLane = lane + lateral * dt;
         lane = THREE.MathUtils.clamp(requestedLane, -laneLimit, laneLimit);
         if (lane !== requestedLane) {
           lateral *= -0.16;
+          headingOffset *= -0.2;
           speed = Math.max(0, speed - 18 * dt);
           shake = Math.max(shake, 0.12);
           if (Math.random() < 0.3) {
@@ -2579,12 +2723,17 @@ export function startPursuitGame(
             emit(effectPosition, 1, 1.2);
           }
         }
-        progress += speed * dt;
+        progress += speed * Math.max(0.88, Math.cos(headingOffset)) * dt;
         spin -= speed * dt * 1.55;
         playerWheels.forEach(({ steerPivot, spinPivot, front }) => {
           spinPivot.rotation.x = spin;
           steerPivot.rotation.y = front
-            ? THREE.MathUtils.damp(steerPivot.rotation.y, -steer * 0.34, 10, dt)
+            ? THREE.MathUtils.damp(
+                steerPivot.rotation.y,
+                -steer * THREE.MathUtils.lerp(0.42, 0.3, speedRatio),
+                11,
+                dt,
+              )
             : 0;
         });
         if (Math.abs(steer) > 0.58 && speed > 20 && Math.random() < 0.38) {
@@ -2624,7 +2773,9 @@ export function startPursuitGame(
           ) {
             obstacle.hit = true;
             speed *= obstacle.kind === "oil" ? 0.72 : 0.5;
-            lateral += (collisionLane > obstacle.lane ? 1 : -1) * 9;
+            const impactDirection = collisionLane > obstacle.lane ? 1 : -1;
+            lateral += impactDirection * 9;
+            headingOffset += impactDirection * 0.07;
             shake = 0.85;
             setTrackPosition(
               effectPosition,
@@ -2851,22 +3002,30 @@ export function startPursuitGame(
           speed = 0;
         }
       } else if (gamePhase === "won") {
-        progress += speed * dt;
+        headingOffset = dampAngle(headingOffset, 0, 4.5, dt);
+        lateral = THREE.MathUtils.damp(lateral, 0, 4, dt);
+        progress += speed * Math.max(0.9, Math.cos(headingOffset)) * dt;
         speed = Math.max(0, speed - 7 * dt);
       }
 
       setTrackPosition(playerRoot.position, progress, lane, 0.03, levelIndex);
       const playerX = playerRoot.position.x;
-      const playerTargetYaw =
-        roadAngle(progress, levelIndex) -
-        Math.atan2(lateral, Math.max(speed, 7)) -
-        steer * 0.035;
-      playerYaw = dampAngle(playerYaw, playerTargetYaw, 8.2, dt);
+      const playerTargetYaw = roadAngle(progress, levelIndex) - headingOffset;
+      playerYaw = dampAngle(playerYaw, playerTargetYaw, 9, dt);
       playerRoot.rotation.y = playerYaw;
+      const lateralAcceleration =
+        (lateral - previousLateral) / Math.max(dt, 0.001);
+      previousLateral = lateral;
+      const corneringRoll = THREE.MathUtils.clamp(
+        -headingOffset * (0.2 + Math.min(speed / 38, 1) * 0.16) -
+          lateralAcceleration * 0.0025,
+        -0.105,
+        0.105,
+      );
       playerVisual.rotation.z = THREE.MathUtils.damp(
         playerVisual.rotation.z,
-        -steer * Math.min(speed / 38, 1) * 0.07,
-        7,
+        corneringRoll,
+        8.5,
         dt,
       );
       const ratio = speed / 38;
@@ -2915,11 +3074,11 @@ export function startPursuitGame(
       if (audio && musicBus) {
         const musicLevel =
           gamePhase === "playing"
-            ? 0.94
+            ? 1.06
             : gamePhase === "won"
-              ? 0.72
-              : 0.54;
-        musicBus.gain.setTargetAtTime(musicLevel, audio.currentTime, 0.16);
+              ? 0.84
+              : 0.64;
+        musicBus.gain.setTargetAtTime(musicLevel, audio.currentTime, 0.14);
       }
       if (speedRef.current) speedRef.current.textContent = String(Math.round(speed * 6.1));
       if (distanceRef.current) {
