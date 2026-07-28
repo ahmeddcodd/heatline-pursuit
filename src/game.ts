@@ -74,6 +74,9 @@ const COP_HALF_LENGTH = 2.12;
 const ENGINE_GEAR_SPEEDS = [0, 10.5, 20.5, 29.5, 37.5, 44, 50] as const;
 const ENGINE_UPSHIFT_LOCKOUT = 1.05;
 const ENGINE_DOWNSHIFT_LOCKOUT = 0.78;
+const PLAYER_STEER_RESPONSE = 16.5;
+const PLAYER_HIGH_SPEED_STEER_RESPONSE = 11.8;
+const PLAYER_TIRE_GRIP = 12.5;
 
 function roadCenter(p: number, levelIndex: number) {
   const level = LEVELS[levelIndex];
@@ -2785,16 +2788,19 @@ export function startPursuitGame(
         const keys = (input.left ? -1 : 0) + (input.right ? 1 : 0);
         const rawSteer = Math.abs(input.touch) > 0.03 ? input.touch : keys;
         const targetSteer =
-          Math.sign(rawSteer) * Math.pow(Math.abs(rawSteer), 1.18);
+          Math.sign(rawSteer) * Math.pow(Math.abs(rawSteer), 1.04);
         const speedRatio = THREE.MathUtils.clamp(speed / 38, 0, 1);
         const counterSteering = targetSteer * steer < -0.02;
         const steeringResponse =
-          THREE.MathUtils.lerp(10.8, 7.6, speedRatio) +
-          (counterSteering ? 3.4 : 0);
+          THREE.MathUtils.lerp(
+            PLAYER_STEER_RESPONSE,
+            PLAYER_HIGH_SPEED_STEER_RESPONSE,
+            speedRatio,
+          ) + (counterSteering ? 5 : 0);
         steer = THREE.MathUtils.damp(
           steer,
           targetSteer,
-          rawSteer === 0 ? steeringResponse + 3 : steeringResponse,
+          rawSteer === 0 ? steeringResponse + 4.5 : steeringResponse,
           dt,
         );
         const boosting = input.boost && nitro > 0.5 && speed > 8;
@@ -2819,23 +2825,23 @@ export function startPursuitGame(
           nitro = Math.min(100, nitro + 5.5 * dt);
         }
         const steeringAuthority = THREE.MathUtils.smoothstep(speed, 0.8, 7);
-        const maximumHeading = THREE.MathUtils.lerp(0.34, 0.23, speedRatio);
+        const maximumHeading = THREE.MathUtils.lerp(0.38, 0.275, speedRatio);
         const targetHeading = steer * maximumHeading * steeringAuthority;
         headingOffset = dampAngle(
           headingOffset,
           targetHeading,
-          THREE.MathUtils.lerp(9.4, 6.7, speedRatio) +
-            (counterSteering ? 1.6 : 0),
+          THREE.MathUtils.lerp(15, 10.8, speedRatio) +
+            (counterSteering ? 3.2 : 0),
           dt,
         );
         const targetLateralSpeed =
           Math.sin(headingOffset) *
           speed *
-          THREE.MathUtils.lerp(0.88, 0.99, speedRatio);
+          THREE.MathUtils.lerp(0.92, 0.97, speedRatio);
         lateral = THREE.MathUtils.damp(
           lateral,
           targetLateralSpeed,
-          boosting ? 5.4 : 6.6,
+          boosting ? PLAYER_TIRE_GRIP - 2.1 : PLAYER_TIRE_GRIP,
           dt,
         );
         const upcomingTurn = Math.atan2(
@@ -2848,12 +2854,15 @@ export function startPursuitGame(
               roadAngle(progress, levelIndex),
           ),
         );
-        lateral +=
+        const corneringPush = THREE.MathUtils.clamp(
           upcomingTurn *
-          speed *
-          speed *
-          (0.009 + levelIndex * 0.0007) *
-          dt;
+            speed *
+            speed *
+            (0.0058 + levelIndex * 0.00045),
+          -3.8,
+          3.8,
+        );
+        lateral += corneringPush * dt;
         const laneLimit = driveableLaneLimit();
         const requestedLane = lane + lateral * dt;
         lane = THREE.MathUtils.clamp(requestedLane, -laneLimit, laneLimit);
@@ -3160,22 +3169,32 @@ export function startPursuitGame(
 
       setTrackPosition(playerRoot.position, progress, lane, 0.03, levelIndex);
       const playerX = playerRoot.position.x;
-      const playerTargetYaw = roadAngle(progress, levelIndex) - headingOffset;
-      playerYaw = dampAngle(playerYaw, playerTargetYaw, 9, dt);
+      const movementHeading =
+        speed > 1
+          ? Math.asin(
+              THREE.MathUtils.clamp(
+                lateral / Math.max(speed, 1),
+                -0.46,
+                0.46,
+              ),
+            )
+          : headingOffset;
+      const playerTargetYaw = roadAngle(progress, levelIndex) - movementHeading;
+      playerYaw = dampAngle(playerYaw, playerTargetYaw, 15.5, dt);
       playerRoot.rotation.y = playerYaw;
       const lateralAcceleration =
         (lateral - previousLateral) / Math.max(dt, 0.001);
       previousLateral = lateral;
       const corneringRoll = THREE.MathUtils.clamp(
         -headingOffset * (0.2 + Math.min(speed / 38, 1) * 0.16) -
-          lateralAcceleration * 0.0025,
-        -0.105,
-        0.105,
+          lateralAcceleration * 0.0015,
+        -0.085,
+        0.085,
       );
       playerVisual.rotation.z = THREE.MathUtils.damp(
         playerVisual.rotation.z,
         corneringRoll,
-        8.5,
+        11.5,
         dt,
       );
       const ratio = speed / 38;
