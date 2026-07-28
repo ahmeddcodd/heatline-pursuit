@@ -90,8 +90,11 @@ const ENGINE_DOWNSHIFT_LOCKOUT = 0.78;
 const PLAYER_STEER_RESPONSE = 16.5;
 const PLAYER_HIGH_SPEED_STEER_RESPONSE = 11.8;
 const PLAYER_TIRE_GRIP = 12.5;
-const NITRO_EXHAUST_OFFSETS = [-0.48, 0.48] as const;
-const NITRO_EXHAUST_Z = -2.55;
+const NITRO_EXHAUST_POINTS = [
+  { x: -0.4, y: 0.27 },
+  { x: 0.05, y: 0.27 },
+] as const;
+const NITRO_EXHAUST_Z = -2.78;
 
 function roadCenter(p: number, levelIndex: number) {
   const level = LEVELS[levelIndex];
@@ -1642,17 +1645,17 @@ export function startPursuitGame(
       depthWrite: false,
     });
     const nitroFlames: THREE.Mesh[] = [];
-    for (const exhaustX of NITRO_EXHAUST_OFFSETS) {
+    for (const exhaust of NITRO_EXHAUST_POINTS) {
       const outer = new THREE.Mesh(
-        new THREE.ConeGeometry(0.22, 1.65, mobileRendering ? 7 : 10),
+        new THREE.ConeGeometry(0.16, 1.15, mobileRendering ? 7 : 10),
         nitroOuterMaterial,
       );
       const core = new THREE.Mesh(
-        new THREE.ConeGeometry(0.11, 1.08, mobileRendering ? 6 : 9),
+        new THREE.ConeGeometry(0.08, 0.78, mobileRendering ? 6 : 9),
         nitroCoreMaterial,
       );
-      outer.position.set(exhaustX, 0.43, NITRO_EXHAUST_Z);
-      core.position.set(exhaustX, 0.43, NITRO_EXHAUST_Z + 0.15);
+      outer.position.set(exhaust.x, exhaust.y, NITRO_EXHAUST_Z);
+      core.position.set(exhaust.x, exhaust.y, NITRO_EXHAUST_Z + 0.15);
       outer.rotation.x = -Math.PI / 2;
       core.rotation.x = -Math.PI / 2;
       outer.visible = false;
@@ -3002,10 +3005,10 @@ export function startPursuitGame(
         if (boosting) {
           nitro = Math.max(0, nitro - 22 * dt);
           if (!nitroWasActive || Math.random() < 0.82) {
-            for (const exhaustX of NITRO_EXHAUST_OFFSETS) {
+            for (const exhaust of NITRO_EXHAUST_POINTS) {
               nitroEmissionPosition.set(
-                exhaustX,
-                0.43,
+                exhaust.x,
+                exhaust.y,
                 NITRO_EXHAUST_Z - 0.2,
               );
               playerEffects.localToWorld(nitroEmissionPosition);
