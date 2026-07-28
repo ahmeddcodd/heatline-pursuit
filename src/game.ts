@@ -71,6 +71,7 @@ const PLAYER_HALF_WIDTH = 1.02;
 const PLAYER_HALF_LENGTH = 2.08;
 const COP_HALF_WIDTH = 1.08;
 const COP_HALF_LENGTH = 2.12;
+const ENGINE_GEAR_SPEEDS = [0, 7.5, 14.5, 22, 30.5, 39.5, 50] as const;
 
 function roadCenter(p: number, levelIndex: number) {
   const level = LEVELS[levelIndex];
@@ -1764,6 +1765,17 @@ export function startPursuitGame(
     let audio: AudioContext | null = null;
     let master: GainNode | null = null;
     let musicBus: GainNode | null = null;
+    let engineBus: GainNode | null = null;
+    let sportsEnginePrimary: OscillatorNode | null = null;
+    let sportsEngineHarmonic: OscillatorNode | null = null;
+    let sportsEngineSub: OscillatorNode | null = null;
+    let sportsEngineFilter: BiquadFilterNode | null = null;
+    let sportsEngineGain: GainNode | null = null;
+    let exhaustFilter: BiquadFilterNode | null = null;
+    let exhaustGain: GainNode | null = null;
+    let engineGear = 1;
+    let shiftCooldown = 0;
+    let shiftDip = 0;
     let musicTimer: ReturnType<typeof setInterval> | null = null;
     let noiseBuffer: AudioBuffer | null = null;
     let nextMusicTime = 0;
@@ -2075,6 +2087,46 @@ export function startPursuitGame(
         }
       });
     };
+    const playGearShift = (upshift: boolean) => {
+      if (
+        !audio ||
+        !engineBus ||
+        !noiseBuffer ||
+        muted ||
+        hostPaused ||
+        !hostAudioEnabled
+      ) {
+        return;
+      }
+      const when = audio.currentTime;
+      const clunk = audio.createOscillator();
+      const clunkGain = audio.createGain();
+      const clunkFilter = audio.createBiquadFilter();
+      clunk.type = "triangle";
+      clunk.frequency.setValueAtTime(upshift ? 165 : 132, when);
+      clunk.frequency.exponentialRampToValueAtTime(58, when + 0.09);
+      clunkFilter.type = "lowpass";
+      clunkFilter.frequency.value = 620;
+      clunkGain.gain.setValueAtTime(0.0001, when);
+      clunkGain.gain.exponentialRampToValueAtTime(0.095, when + 0.006);
+      clunkGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.12);
+      clunk.connect(clunkFilter).connect(clunkGain).connect(engineBus);
+      clunk.start(when);
+      clunk.stop(when + 0.14);
+
+      const pop = audio.createBufferSource();
+      const popFilter = audio.createBiquadFilter();
+      const popGain = audio.createGain();
+      pop.buffer = noiseBuffer;
+      popFilter.type = "bandpass";
+      popFilter.frequency.value = upshift ? 960 : 720;
+      popFilter.Q.value = 0.9;
+      popGain.gain.setValueAtTime(0.07, when + 0.018);
+      popGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.14);
+      pop.connect(popFilter).connect(popGain).connect(engineBus);
+      pop.start(when + 0.018);
+      pop.stop(when + 0.15);
+    };
     const setupAudio = () => {
       if (audio) {
         syncAudioPolicy();
@@ -2115,13 +2167,77 @@ export function startPursuitGame(
 
       noiseBuffer = audio.createBuffer(
         1,
-        Math.floor(audio.sampleRate * 0.32),
+        Math.floor(audio.sampleRate * 0.75),
         audio.sampleRate,
       );
       const noise = noiseBuffer.getChannelData(0);
       for (let i = 0; i < noise.length; i++) {
         noise[i] = Math.random() * 2 - 1;
       }
+
+      engineBus = audio.createGain();
+      engineBus.gain.value = 0.72;
+      const engineMix = audio.createGain();
+      const primaryLevel = audio.createGain();
+      const harmonicLevel = audio.createGain();
+      const subLevel = audio.createGain();
+      const engineDrive = audio.createWaveShaper();
+      const enginePanner = audio.createStereoPanner();
+      primaryLevel.gain.value = 0.48;
+      harmonicLevel.gain.value = 0.17;
+      subLevel.gain.value = 0.28;
+      const driveCurve = new Float32Array(384);
+      for (let i = 0; i < driveCurve.length; i++) {
+        const x = (i / (driveCurve.length - 1)) * 2 - 1;
+        driveCurve[i] = Math.tanh(x * 2.65);
+      }
+      engineDrive.curve = driveCurve;
+      engineDrive.oversample = mobileRendering ? "none" : "2x";
+      enginePanner.pan.value = -0.04;
+
+      sportsEnginePrimary = audio.createOscillator();
+      sportsEngineHarmonic = audio.createOscillator();
+      sportsEngineSub = audio.createOscillator();
+      sportsEngineFilter = audio.createBiquadFilter();
+      sportsEngineGain = audio.createGain();
+      sportsEnginePrimary.type = "sawtooth";
+      sportsEngineHarmonic.type = "triangle";
+      sportsEngineSub.type = "triangle";
+      sportsEnginePrimary.frequency.value = 52;
+      sportsEngineHarmonic.frequency.value = 104;
+      sportsEngineSub.frequency.value = 26;
+      sportsEngineFilter.type = "lowpass";
+      sportsEngineFilter.frequency.value = 720;
+      sportsEngineFilter.Q.value = 1.1;
+      sportsEngineGain.gain.value = 0;
+      sportsEnginePrimary.connect(primaryLevel).connect(engineMix);
+      sportsEngineHarmonic.connect(harmonicLevel).connect(engineMix);
+      sportsEngineSub.connect(subLevel).connect(engineMix);
+      engineMix
+        .connect(engineDrive)
+        .connect(sportsEngineFilter)
+        .connect(sportsEngineGain)
+        .connect(enginePanner)
+        .connect(engineBus);
+      sportsEnginePrimary.start();
+      sportsEngineHarmonic.start();
+      sportsEngineSub.start();
+
+      const exhaustSource = audio.createBufferSource();
+      exhaustFilter = audio.createBiquadFilter();
+      exhaustGain = audio.createGain();
+      exhaustSource.buffer = noiseBuffer;
+      exhaustSource.loop = true;
+      exhaustFilter.type = "bandpass";
+      exhaustFilter.frequency.value = 520;
+      exhaustFilter.Q.value = 0.85;
+      exhaustGain.gain.value = 0;
+      exhaustSource
+        .connect(exhaustFilter)
+        .connect(exhaustGain)
+        .connect(engineBus);
+      exhaustSource.start();
+      engineBus.connect(master);
 
       musicStep = 0;
       syncAudioPolicy();
@@ -2463,6 +2579,9 @@ export function startPursuitGame(
       shake = 0;
       cooldown = 0;
       spin = 0;
+      engineGear = 1;
+      shiftCooldown = 0;
+      shiftDip = 0;
       playerYaw = roadAngle(0, levelIndex);
       time = 0;
       const startX = roadCenter(0, levelIndex);
@@ -3085,6 +3204,120 @@ export function startPursuitGame(
               ? 0.84
               : 0.64;
         musicBus.gain.setTargetAtTime(musicLevel, audio.currentTime, 0.14);
+      }
+      if (
+        audio &&
+        audio.state === "running" &&
+        engineBus &&
+        sportsEnginePrimary &&
+        sportsEngineHarmonic &&
+        sportsEngineSub &&
+        sportsEngineFilter &&
+        sportsEngineGain &&
+        exhaustFilter &&
+        exhaustGain
+      ) {
+        shiftCooldown = Math.max(0, shiftCooldown - dt);
+        shiftDip = Math.max(0, shiftDip - dt * 4.4);
+        const automaticThrottle = coarsePointer && !input.brake;
+        const throttle =
+          gamePhase === "playing"
+            ? input.gas || automaticThrottle
+              ? 1
+              : input.brake
+                ? 0.06
+                : 0.28
+            : gamePhase === "won"
+              ? 0.16
+              : 0.08;
+
+        if (gamePhase === "playing" && shiftCooldown <= 0) {
+          const canUpshift = engineGear < ENGINE_GEAR_SPEEDS.length - 1;
+          const upshiftSpeed = ENGINE_GEAR_SPEEDS[engineGear];
+          const downshiftSpeed =
+            ENGINE_GEAR_SPEEDS[Math.max(0, engineGear - 1)] - 1.5;
+          if (canUpshift && speed >= upshiftSpeed) {
+            engineGear++;
+            shiftCooldown = 0.3;
+            shiftDip = 1;
+            playGearShift(true);
+          } else if (engineGear > 1 && speed < downshiftSpeed) {
+            engineGear--;
+            shiftCooldown = 0.26;
+            shiftDip = 0.72;
+            playGearShift(false);
+          }
+        }
+
+        const gearMinimumSpeed = ENGINE_GEAR_SPEEDS[engineGear - 1];
+        const gearMaximumSpeed = ENGINE_GEAR_SPEEDS[engineGear];
+        const gearProgress = THREE.MathUtils.clamp(
+          (speed - gearMinimumSpeed) /
+            Math.max(1, gearMaximumSpeed - gearMinimumSpeed),
+          0,
+          1,
+        );
+        const engineRpm =
+          (speed < 0.6
+            ? 1080 + Math.sin(time * 8.5) * 42
+            : 1450 + gearProgress * 6100 + throttle * 260) *
+          (1 - shiftDip * 0.24);
+        const rpmRatio = THREE.MathUtils.clamp(
+          (engineRpm - 950) / 6900,
+          0,
+          1,
+        );
+        const engineFrequency = 50 + rpmRatio * 255;
+        sportsEnginePrimary.frequency.setTargetAtTime(
+          engineFrequency,
+          audio.currentTime,
+          0.035,
+        );
+        sportsEngineHarmonic.frequency.setTargetAtTime(
+          engineFrequency * 2.015,
+          audio.currentTime,
+          0.03,
+        );
+        sportsEngineSub.frequency.setTargetAtTime(
+          engineFrequency * 0.5,
+          audio.currentTime,
+          0.05,
+        );
+        sportsEngineFilter.frequency.setTargetAtTime(
+          620 + rpmRatio * 2250 + throttle * 480,
+          audio.currentTime,
+          0.055,
+        );
+        const nitroGrowl =
+          gamePhase === "playing" && input.boost && nitro > 0.5 ? 0.014 : 0;
+        const engineLevel =
+          gamePhase === "playing"
+            ? 0.038 + rpmRatio * 0.06 + throttle * 0.034 + nitroGrowl
+            : gamePhase === "won"
+              ? 0.045 + rpmRatio * 0.026
+              : 0.024;
+        sportsEngineGain.gain.setTargetAtTime(
+          engineLevel * (1 - shiftDip * 0.42),
+          audio.currentTime,
+          0.045,
+        );
+        exhaustFilter.frequency.setTargetAtTime(
+          430 + rpmRatio * 920 + throttle * 280,
+          audio.currentTime,
+          0.07,
+        );
+        exhaustGain.gain.setTargetAtTime(
+          gamePhase === "playing"
+            ? 0.004 + rpmRatio * 0.009 + throttle * 0.02
+            : 0.003,
+          audio.currentTime,
+          0.08,
+        );
+        engineBus.gain.setTargetAtTime(
+          gamePhase === "playing" ? 0.74 : 0.58,
+          audio.currentTime,
+          0.12,
+        );
       }
       if (speedRef.current) speedRef.current.textContent = String(Math.round(speed * 6.1));
       if (distanceRef.current) {
